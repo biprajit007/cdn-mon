@@ -1,0 +1,13 @@
+services:
+  server:
+    build: ./server
+    env_file: .env
+    ports:
+      - "18443:18443"
+    volumes:
+      - ./data:/app/data
+  agent:
+    build: ./agent
+    env_file: .env
+    depends_on:
+      - server
