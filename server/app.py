@@ -149,26 +149,133 @@ def dashboard(token: Optional[str] = Cookie(None)):
         return RedirectResponse(url='/login', status_code=303)
     cleanup_old_metrics()
     return f"""<!doctype html><html><head><title>CDN Monitor</title>
-    <style>body{{font-family:Arial;background:#081018;color:#d8f7ff;padding:20px}}table{{border-collapse:collapse;width:100%}}
-    td,th{{border:1px solid #1f3b4d;padding:8px}}a{{color:#7fe8ff}}.logout{{float:right}}</style>
+    <style>
+    body{{font-family:Arial;background:#081018;color:#d8f7ff;padding:20px;margin:0}}
+    a{{color:#7fe8ff}}
+    .logout{{float:right}}
+    .topbar{{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}}
+    .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0}}
+    .card{{background:#0a1520;border:1px solid #1f3b4d;border-radius:10px;padding:14px}}
+    .card .label{{font-size:12px;opacity:.75;margin-bottom:6px}}
+    .card .value{{font-size:24px;font-weight:700}}
+    .panel{{background:#0a1520;border:1px solid #1f3b4d;border-radius:10px;padding:14px;margin-top:16px}}
+    .panel h2{{margin:0 0 12px 0;font-size:18px}}
+    table{{border-collapse:collapse;width:100%}}
+    td,th{{border:1px solid #1f3b4d;padding:8px;text-align:left}}
+    select{{background:#081018;color:#d8f7ff;border:1px solid #1f3b4d;padding:8px;border-radius:6px}}
+    .muted{{opacity:.75}}
+    .empty{{padding:16px 0;opacity:.75}}
+    .chart{{width:100%;height:220px;display:block;background:#081018;border:1px solid #1f3b4d;border-radius:8px}}
+    </style>
     </head><body><h1>CDN Monitoring System</h1><a href='/logout' class='logout'>Logout ({html.escape(username)})</a>
-    <p>Endpoints: <a href='/api/latest'>/api/latest</a></p><div id='app'></div><script>
-    function cell(text){{const td=document.createElement('td'); td.textContent = text; return td;}}
-    async function load(){{const r=await fetch('/api/latest');const d=await r.json();
-    const table=document.createElement('table');
-    const head=document.createElement('tr');
-    for (const title of ['CDN','Host','Port','Connections','Timestamp']){{head.appendChild(cell(title));}}
-    table.appendChild(head);
-    for(const x of d.items){{
-      const tr=document.createElement('tr');
-      tr.appendChild(cell(x.cdn_name));
-      tr.appendChild(cell(x.host));
-      tr.appendChild(cell(String(x.target_port)));
-      tr.appendChild(cell(String(x.connection_count)));
-      tr.appendChild(cell(new Date(x.ts*1000).toLocaleString()));
-      table.appendChild(tr);
+    <p class='muted'>Endpoints: <a href='/api/latest'>/api/latest</a> · <a href='/api/history?cdn_name=cdn1'>/api/history</a></p>
+    <div class='grid' id='summary'></div>
+    <div class='panel'>
+      <h2>Trend</h2>
+      <div style='display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px'>
+        <label for='cdnSelect' class='muted'>CDN</label>
+        <select id='cdnSelect'></select>
+        <span id='trendMeta' class='muted'></span>
+      </div>
+      <svg id='trendChart' class='chart' viewBox='0 0 900 220' preserveAspectRatio='none'></svg>
+      <div id='trendEmpty' class='empty' style='display:none'>No history yet for this CDN.</div>
+    </div>
+    <div class='panel'>
+      <h2>Latest metrics</h2><div id='app'></div>
+    </div>
+    <script>
+    const state = {{ items: [], selected: null }};
+    function el(tag, attrs={{}}, text=''){{ const node=document.createElement(tag); for(const [k,v] of Object.entries(attrs)){{ if(k==='class') node.className=v; else if(k==='text') node.textContent=v; else node.setAttribute(k,v); }} if(text) node.textContent=text; return node; }}
+    function renderSummary(items){{
+      const totalConnections = items.reduce((sum, x) => sum + Number(x.connection_count || 0), 0);
+      const lastSeen = items.length ? new Date(Math.max(...items.map(x => x.ts))*1000).toLocaleString() : 'n/a';
+      const summary = document.getElementById('summary');
+      summary.replaceChildren(
+        el('div', {{class:'card'}}, ''),
+        el('div', {{class:'card'}}, ''),
+        el('div', {{class:'card'}}, '')
+      );
+      summary.children[0].innerHTML = '<div class="label">CDNs</div><div class="value">' + items.length + '</div>';
+      summary.children[1].innerHTML = '<div class="label">Total connections</div><div class="value">' + totalConnections + '</div>';
+      summary.children[2].innerHTML = '<div class="label">Last update</div><div class="value" style="font-size:16px">' + lastSeen + '</div>';
     }}
-    const app=document.getElementById('app'); app.replaceChildren(table);}}
+    function renderTable(items){{
+      const app=document.getElementById('app');
+      if(!items.length){{ app.innerHTML = '<div class="empty">No metrics yet.</div>'; return; }}
+      const table=document.createElement('table');
+      const head=document.createElement('tr');
+      for (const title of ['CDN','Host','Port','Connections','Timestamp']){{ head.appendChild(el('th', {{text:title}})); }}
+      table.appendChild(head);
+      for(const x of items){{
+        const tr=document.createElement('tr');
+        tr.appendChild(el('td', {{text:x.cdn_name}}));
+        tr.appendChild(el('td', {{text:x.host}}));
+        tr.appendChild(el('td', {{text:String(x.target_port)}}));
+        tr.appendChild(el('td', {{text:String(x.connection_count)}}));
+        tr.appendChild(el('td', {{text:new Date(x.ts*1000).toLocaleString()}}));
+        table.appendChild(tr);
+      }}
+      app.replaceChildren(table);
+    }}
+    function renderSelector(items){{
+      const select = document.getElementById('cdnSelect');
+      const names = [...new Set(items.map(x => x.cdn_name))];
+      const current = state.selected && names.includes(state.selected) ? state.selected : names[0] || '';
+      select.replaceChildren(...names.map(name => el('option', {{value:name, text:name}})));
+      select.value = current;
+      state.selected = current;
+      select.onchange = () => {{ state.selected = select.value; loadTrend(); }};
+      document.getElementById('trendMeta').textContent = current ? ('showing last 60 minutes for ' + current) : '';
+    }}
+    function drawBars(points){{
+      const svg = document.getElementById('trendChart');
+      const empty = document.getElementById('trendEmpty');
+      svg.replaceChildren();
+      if(!points.length){{ empty.style.display='block'; return; }}
+      empty.style.display='none';
+      const max = Math.max(...points.map(p => Number(p.connection_count || 0)), 1);
+      const w = 900, h = 220, pad = 18;
+      const barW = Math.max(8, Math.floor((w - pad*2) / points.length) - 4);
+      const step = (w - pad*2) / points.length;
+      points.forEach((p, i) => {{
+        const val = Number(p.connection_count || 0);
+        const barH = Math.max(2, Math.round((val / max) * (h - 50)));
+        const x = pad + i * step;
+        const y = h - 28 - barH;
+        const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+        rect.setAttribute('x', x.toFixed(1));
+        rect.setAttribute('y', y);
+        rect.setAttribute('width', barW);
+        rect.setAttribute('height', barH);
+        rect.setAttribute('rx', 3);
+        rect.setAttribute('fill', '#7fe8ff');
+        svg.appendChild(rect);
+      }});
+      const axis = document.createElementNS('http://www.w3.org/2000/svg','line');
+      axis.setAttribute('x1','16'); axis.setAttribute('x2','884'); axis.setAttribute('y1','192'); axis.setAttribute('y2','192');
+      axis.setAttribute('stroke','#1f3b4d'); axis.setAttribute('stroke-width','1');
+      svg.appendChild(axis);
+      const label = document.createElementNS('http://www.w3.org/2000/svg','text');
+      label.setAttribute('x','18'); label.setAttribute('y','16'); label.setAttribute('fill','#d8f7ff'); label.setAttribute('font-size','12');
+      label.textContent = 'max connections: ' + max;
+      svg.appendChild(label);
+    }}
+    async function loadTrend(){{
+      if(!state.selected){{ drawBars([]); return; }}
+      const r=await fetch('/api/history?cdn_name=' + encodeURIComponent(state.selected) + '&minutes=60');
+      const d=await r.json();
+      document.getElementById('trendMeta').textContent = 'showing last 60 minutes for ' + state.selected + ' (' + d.points.length + ' points)';
+      drawBars(d.points || []);
+    }}
+    async function load(){{
+      const r=await fetch('/api/latest');
+      const d=await r.json();
+      state.items = d.items || [];
+      renderSummary(state.items);
+      renderSelector(state.items);
+      renderTable(state.items);
+      await loadTrend();
+    }}
     load(); setInterval(load,5000);
     </script></body></html>"""
 
