@@ -153,7 +153,7 @@ def range_spec(range_key: str):
     normalized = (range_key or '24h').strip().lower()
     now = int(time.time())
     if normalized in ('24h', 'day', 'daily', 'today'):
-        return {'since': now - 86400, 'bucket': 3600, 'label': 'last 24 hours', 'stepLabel': 'hour'}
+        return {'since': now - 86400, 'bucket': 10, 'label': 'last 24 hours', 'stepLabel': '10 seconds'}
     if normalized in ('7d', 'week', 'weekly'):
         return {'since': now - 7 * 86400, 'bucket': 86400, 'label': 'last 7 days', 'stepLabel': 'day'}
     if normalized in ('30d', 'month', 'monthly'):
@@ -771,7 +771,7 @@ def history_page(token: Optional[str] = Cookie(None)):
     username = username_from_token(token)
     if not username:
         return RedirectResponse(url='/login', status_code=303)
-    return """<!doctype html><html><head><title>CDN Monitor History</title>
+    return f"""<!doctype html><html><head><title>CDN Monitor History</title>
     <style>
     body{{font-family:Arial;background:#081018;color:#d8f7ff;padding:20px;margin:0}}
     a{{color:#7fe8ff;text-decoration:none}}
@@ -792,19 +792,20 @@ def history_page(token: Optional[str] = Cookie(None)):
     td,th{{border:1px solid #1f3b4d;padding:8px;text-align:left}}
     .muted{{opacity:.75}}
     .empty{{padding:16px 0;opacity:.75}}
+    .live-note{{margin-top:8px;font-size:12px;opacity:.8}}
     </style>
     </head><body><div class='wrap'>
     <div class='nav'>
       <div>
         <h1 style='margin:0'>Historical data</h1>
-        <div class='muted' style='margin-top:6px'>Default is 24 hours, switch to weekly or monthly anytime.</div>
+        <div class='muted' style='margin-top:6px'>The 24 hour view refreshes every 10 seconds and uses live 10-second buckets.</div>
       </div>
       <div class='navlinks'>
         <a class='badge' href='/'>Home</a>
         <a class='badge' href='/map'>Bangladesh map</a>
         <a class='badge' href='/history'>History</a>
         <a class='badge' href='/management'>Management</a>
-        <a class='badge' href='/logout'>Logout (__USERNAME__)</a>
+        <a class='badge' href='/logout'>Logout ({html.escape(username)})</a>
       </div>
     </div>
 
@@ -817,38 +818,71 @@ def history_page(token: Optional[str] = Cookie(None)):
           <option value='30d'>Monthly</option>
         </select></label>
         <span id='historyMeta' class='muted'></span>
+        <span id='historyTrend' class='badge' style='border-color:#5aa8ff'>Stable</span>
       </div>
       <div class='cards' id='historyCards'></div>
       <svg id='historyChart' class='chart' viewBox='0 0 1200 340' preserveAspectRatio='none'></svg>
       <div id='historyEmpty' class='empty' style='display:none'>No historical data for this selection yet.</div>
+      <div class='live-note'>Live view refreshes every 10 seconds.</div>
     </div>
 
     <div class='panel'>
-      <h2 style='margin-top:0'>Points</h2>
+      <h2 style='margin-top:0'>Recent points</h2>
       <div id='historyTable'></div>
     </div>
     </div>
     <script>
-    const historyState = {{ cdn: null, range: '24h' }};
-    const colors = ['#7fe8ff'];
+    const historyState = {{ cdn: null, range: '24h', refreshing: false }};
 
-    function makeCard(parent, label, value, sub=''){{
-      const card=document.createElement('div'); card.className='card';
-      card.innerHTML = '<div class="label">'+label+'</div><div class="value">'+value+'</div>' + (sub ? '<div class="muted" style="margin-top:6px">'+sub+'</div>' : '');
+    function esc(text){{ const div=document.createElement('div'); div.textContent=String(text ?? ''); return div.textContent; }}
+
+    function trendFor(delta){{
+      if (delta > 0) return {{ key: 'up', label: 'new connection', color: '#27d36b' }};
+      if (delta < 0) return {{ key: 'down', label: 'connection dropped', color: '#ff6b6b' }};
+      return {{ key: 'flat', label: 'stable', color: '#5aa8ff' }};
+    }}
+
+    function makeCard(parent, label, value, sub='', color='#7fe8ff'){{
+      const card=document.createElement('div'); card.className='card'; card.style.borderColor=color;
+      card.innerHTML = '<div class="label">'+esc(label)+'</div><div class="value" style="color:'+color+'">'+esc(value)+'</div>' + (sub ? '<div class="muted" style="margin-top:6px">'+esc(sub)+'</div>' : '');
       parent.appendChild(card);
+    }}
+
+    function wavePath(points, xAt, yAt){{
+      if(!points.length) return '';
+      let d='M ' + xAt(points[0].ts).toFixed(1) + ' ' + yAt(points[0].connection_count).toFixed(1);
+      for(let i=1;i<points.length;i++){{
+        const prev=points[i-1], cur=points[i];
+        const x1=xAt(prev.ts), y1=yAt(prev.connection_count), x2=xAt(cur.ts), y2=yAt(cur.connection_count);
+        const spread=(x2-x1) * 0.45;
+        d += ' C ' + (x1 + spread).toFixed(1) + ' ' + y1.toFixed(1) + ', ' + (x2 - spread).toFixed(1) + ' ' + y2.toFixed(1) + ', ' + x2.toFixed(1) + ' ' + y2.toFixed(1);
+      }}
+      return d;
     }}
 
     function drawSingleSeries(points){{
       const svg=document.getElementById('historyChart');
       const empty=document.getElementById('historyEmpty');
+      const trendBadge=document.getElementById('historyTrend');
       svg.replaceChildren();
-      if(!points.length){{ empty.style.display='block'; return; }}
+      if(!points.length){{
+        empty.style.display='block';
+        trendBadge.textContent = 'Stable';
+        trendBadge.style.borderColor = '#5aa8ff';
+        trendBadge.style.color = '#5aa8ff';
+        return;
+      }}
       empty.style.display='none';
       const w=1200, h=340, padL=50, padR=18, padT=18, padB=38;
       const maxValue=Math.max(1, ...points.map(p => Number(p.connection_count || 0)));
       const minTs=points[0].ts, maxTs=points[points.length-1].ts;
       const xAt = ts => padL + ((ts - minTs) / Math.max(1, (maxTs - minTs))) * (w - padL - padR);
       const yAt = value => h - padB - ((Number(value || 0) / maxValue) * (h - padT - padB));
+      const trend = points.length > 1 ? trendFor(Number(points[points.length - 1].connection_count || 0) - Number(points[points.length - 2].connection_count || 0)) : trendFor(0);
+      trendBadge.textContent = trend.label.charAt(0).toUpperCase() + trend.label.slice(1);
+      trendBadge.style.borderColor = trend.color;
+      trendBadge.style.color = trend.color;
+
       for(let i=0;i<5;i++){{
         const y = padT + i * ((h - padT - padB)/4);
         const line=document.createElementNS('http://www.w3.org/2000/svg','line');
@@ -856,32 +890,53 @@ def history_page(token: Optional[str] = Cookie(None)):
         line.setAttribute('stroke', '#1f3b4d'); line.setAttribute('stroke-width', '1');
         svg.appendChild(line);
       }}
-      let d='';
-      points.forEach((p, idx) => {{
-        const x=xAt(p.ts).toFixed(1), y=yAt(p.connection_count).toFixed(1);
-        d += (idx ? ' L ' : 'M ') + x + ' ' + y;
-      }});
-      const path=document.createElementNS('http://www.w3.org/2000/svg','path');
-      path.setAttribute('d', d);
-      path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', '#7fe8ff');
-      path.setAttribute('stroke-width', '3');
-      svg.appendChild(path);
-      points.forEach(point => {{
+
+      const topPath = wavePath(points, xAt, yAt);
+      if(topPath){{
+        const fill=document.createElementNS('http://www.w3.org/2000/svg','path');
+        fill.setAttribute('d', topPath + ' L ' + xAt(points[points.length-1].ts).toFixed(1) + ' ' + (h-padB) + ' L ' + xAt(points[0].ts).toFixed(1) + ' ' + (h-padB) + ' Z');
+        fill.setAttribute('fill', 'rgba(127,232,255,.08)');
+        fill.setAttribute('stroke', 'none');
+        svg.appendChild(fill);
+
+        const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+        path.setAttribute('d', topPath);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', trend.color);
+        path.setAttribute('stroke-width', '3');
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
+        svg.appendChild(path);
+      }}
+
+      points.forEach((point, idx) => {{
+        const delta = idx ? Number(point.connection_count || 0) - Number(points[idx - 1].connection_count || 0) : 0;
+        const pointTrend = trendFor(delta);
         const circle=document.createElementNS('http://www.w3.org/2000/svg','circle');
         circle.setAttribute('cx', xAt(point.ts));
         circle.setAttribute('cy', yAt(point.connection_count));
-        circle.setAttribute('r', '4');
-        circle.setAttribute('fill', '#7fe8ff');
+        circle.setAttribute('r', idx === points.length - 1 ? '6' : '3.5');
+        circle.setAttribute('fill', idx === points.length - 1 ? pointTrend.color : '#d8f7ff');
+        circle.setAttribute('opacity', idx === points.length - 1 ? '1' : '.8');
         const title=document.createElementNS('http://www.w3.org/2000/svg','title');
         title.textContent = point.connection_count + ' @ ' + new Date(point.ts*1000).toLocaleString();
         circle.appendChild(title);
         svg.appendChild(circle);
       }});
+
       const axis=document.createElementNS('http://www.w3.org/2000/svg','line');
       axis.setAttribute('x1', padL); axis.setAttribute('x2', w-padR); axis.setAttribute('y1', h-padB); axis.setAttribute('y2', h-padB);
-      axis.setAttribute('stroke', '#7fe8ff'); axis.setAttribute('stroke-width', '1');
+      axis.setAttribute('stroke', trend.color); axis.setAttribute('stroke-width', '1');
       svg.appendChild(axis);
+
+      const latest = points[points.length - 1];
+      const latestLabel=document.createElementNS('http://www.w3.org/2000/svg','text');
+      latestLabel.setAttribute('x', String(Math.max(padL, xAt(latest.ts) - 10)));
+      latestLabel.setAttribute('y', String(Math.max(24, yAt(latest.connection_count) - 14)));
+      latestLabel.setAttribute('fill', trend.color);
+      latestLabel.setAttribute('font-size', '12');
+      latestLabel.textContent = String(latest.connection_count);
+      svg.appendChild(latestLabel);
     }}
 
     function renderHistoryTable(points){{
@@ -889,32 +944,47 @@ def history_page(token: Optional[str] = Cookie(None)):
       if(!points.length){{ target.innerHTML = '<div class="empty">No points yet.</div>'; return; }}
       const table=document.createElement('table');
       const head=document.createElement('tr');
-      ['Timestamp','Connections'].forEach(title => {{ const th=document.createElement('th'); th.textContent=title; head.appendChild(th); }});
+      ['Timestamp','Connections','Change'].forEach(title => {{ const th=document.createElement('th'); th.textContent=title; head.appendChild(th); }});
       table.appendChild(head);
-      points.forEach(point => {{
+      points.slice(-120).reverse().forEach((point, idx) => {{
         const tr=document.createElement('tr');
-        [new Date(point.ts*1000).toLocaleString(), String(point.connection_count)].forEach(value => {{ const td=document.createElement('td'); td.textContent=value; tr.appendChild(td); }});
+        const prev = points[points.length - 1 - idx - 1];
+        const delta = prev ? Number(point.connection_count || 0) - Number(prev.connection_count || 0) : 0;
+        const change = trendFor(delta);
+        [new Date(point.ts*1000).toLocaleString(), String(point.connection_count), (delta > 0 ? '+' : '') + String(delta)].forEach((value, i) => {{ const td=document.createElement('td'); td.textContent=value; if(i === 2) td.style.color = change.color; tr.appendChild(td); }});
         table.appendChild(tr);
       }});
       target.replaceChildren(table);
     }}
 
     async function loadHistory(){{
-      if(!historyState.cdn) return;
-      const r=await fetch('/api/history?cdn_name=' + encodeURIComponent(historyState.cdn) + '&range=' + encodeURIComponent(historyState.range));
-      const d=await r.json();
-      document.getElementById('historyMeta').textContent = d.label + ' · ' + historyState.cdn;
-      const points = d.points || [];
-      const current = points.length ? points[points.length - 1].connection_count : 'n/a';
-      const max = points.length ? Math.max(...points.map(p => p.connection_count)) : 0;
-      const avg = points.length ? Math.round(points.reduce((sum,p)=>sum + Number(p.connection_count||0),0) / points.length) : 0;
-      const cards=document.getElementById('historyCards');
-      cards.replaceChildren();
-      makeCard(cards, 'Current', current, 'latest point');
-      makeCard(cards, 'Maximum', max, 'in selected range');
-      makeCard(cards, 'Average', avg, 'in selected range');
-      drawSingleSeries(points);
-      renderHistoryTable(points);
+      if(!historyState.cdn || historyState.refreshing) return;
+      historyState.refreshing = true;
+      try {{
+        const [historyRes, latestRes] = await Promise.all([
+          fetch('/api/history?cdn_name=' + encodeURIComponent(historyState.cdn) + '&range=' + encodeURIComponent(historyState.range)),
+          fetch('/api/latest')
+        ]);
+        const d=await historyRes.json();
+        const latestPayload = await latestRes.json();
+        const latestItem = (latestPayload.items || []).find(item => item.cdn_name === historyState.cdn);
+        document.getElementById('historyMeta').textContent = d.label + ' · ' + historyState.cdn + ' · refreshes every 10 seconds';
+        const points = d.points || [];
+        const current = latestItem ? latestItem.connection_count : (points.length ? points[points.length - 1].connection_count : 'n/a');
+        const max = points.length ? Math.max(...points.map(p => p.connection_count)) : 0;
+        const avg = points.length ? Math.round(points.reduce((sum,p)=>sum + Number(p.connection_count||0),0) / points.length) : 0;
+        const historyTrend = points.length > 1 ? trendFor(Number(points[points.length - 1].connection_count || 0) - Number(points[points.length - 2].connection_count || 0)) : trendFor(0);
+        const liveTrend = latestItem && points.length ? trendFor(Number(latestItem.connection_count || 0) - Number(points[points.length - 1].connection_count || 0)) : historyTrend;
+        const cards=document.getElementById('historyCards');
+        cards.replaceChildren();
+        makeCard(cards, 'Current', current, 'latest point', liveTrend.color);
+        makeCard(cards, 'Maximum', max, 'in selected range', '#7fe8ff');
+        makeCard(cards, 'Average', avg, 'in selected range', '#7fe8ff');
+        drawSingleSeries(points);
+        renderHistoryTable(points);
+      }} finally {{
+        historyState.refreshing = false;
+      }}
     }}
 
     async function initHistory(){{
@@ -928,11 +998,12 @@ def history_page(token: Optional[str] = Cookie(None)):
       const rangeSelect = document.getElementById('rangeSelect');
       rangeSelect.onchange = () => {{ historyState.range = rangeSelect.value; loadHistory(); }};
       historyState.range = rangeSelect.value;
-      loadHistory();
+      await loadHistory();
+      setInterval(loadHistory, 10000);
     }}
 
     initHistory();
-    </script></body></html>""".replace('__USERNAME__', html.escape(username))
+    </script></body></html>"""
 
 @app.post('/api/ingest')
 def ingest(metric: MetricIn, x_agent_token: Optional[str] = Header(None)):
