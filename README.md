@@ -7,7 +7,8 @@ A small two-service monitoring stack: an agent counts TCP connections for a targ
 - Docker Compose deployment with separate agent and server containers
 - Token-protected ingest endpoint
 - SQLite-backed metric storage
-- HTML dashboard plus JSON API for the latest metric rows
+- Interactive HTML dashboard with live counts, graph, map, and history views
+- JSON APIs for latest rows, series data, and map config
 
 ## Project structure
 
@@ -43,6 +44,26 @@ Default first login, if bootstrap is enabled:
 
 - Username: `admin`
 - Password: `cdn-monitor-2026!`
+
+### Map configuration
+
+Edit `data/cdn_map.json` to place CDNs on the Bangladesh map.
+Example format:
+
+```json
+{
+  "cdn1": "Dhaka",
+  "cdn2": { "place_name": "Chattogram" }
+}
+```
+
+You can copy `cdn_map.example.json` as a starter.
+
+### History filters
+
+- `24h` , default today view
+- `7d` , weekly
+- `30d` , monthly
 
 ## Configuration
 

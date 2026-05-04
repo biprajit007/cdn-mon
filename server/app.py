@@ -1,8 +1,8 @@
-from fastapi import FastAPI, Header, HTTPException, Cookie, Depends, Form
+from fastapi import FastAPI, Header, HTTPException, Cookie, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
-import os, sqlite3, time, html, logging
+import os, sqlite3, time, html, logging, json
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -42,6 +42,33 @@ RETENTION_DAYS = int(os.getenv('RETENTION_DAYS', '30'))
 BOOTSTRAP_ADMIN_USERNAME = os.getenv('BOOTSTRAP_ADMIN_USERNAME', 'admin')
 BOOTSTRAP_ADMIN_PASSWORD = os.getenv('BOOTSTRAP_ADMIN_PASSWORD', 'cdn-monitor-2026!')
 AUTO_BOOTSTRAP_ADMIN = os.getenv('AUTO_BOOTSTRAP_ADMIN', 'true').lower() in ('1', 'true', 'yes', 'on')
+MAP_CONFIG_FILE = os.getenv('MAP_CONFIG_FILE', '/app/data/cdn_map.json')
+
+BANGLADESH_PLACES = {
+    'dhaka': {'label': 'Dhaka', 'lat': 23.8103, 'lon': 90.4125},
+    'chattogram': {'label': 'Chattogram', 'lat': 22.3569, 'lon': 91.7832},
+    'chittagong': {'label': 'Chattogram', 'lat': 22.3569, 'lon': 91.7832},
+    'khulna': {'label': 'Khulna', 'lat': 22.8456, 'lon': 89.5403},
+    'rajshahi': {'label': 'Rajshahi', 'lat': 24.3745, 'lon': 88.6042},
+    'sylhet': {'label': 'Sylhet', 'lat': 24.8949, 'lon': 91.8687},
+    'barishal': {'label': 'Barishal', 'lat': 22.7010, 'lon': 90.3535},
+    'barisal': {'label': 'Barishal', 'lat': 22.7010, 'lon': 90.3535},
+    'rangpur': {'label': 'Rangpur', 'lat': 25.7439, 'lon': 89.2752},
+    'mymensingh': {'label': 'Mymensingh', 'lat': 24.7471, 'lon': 90.4203},
+    'coxsbazar': {'label': 'Cox’s Bazar', 'lat': 21.4272, 'lon': 92.0058},
+    'cox\'s bazar': {'label': 'Cox’s Bazar', 'lat': 21.4272, 'lon': 92.0058},
+    'cumilla': {'label': 'Cumilla', 'lat': 23.4607, 'lon': 91.1809},
+    'comilla': {'label': 'Cumilla', 'lat': 23.4607, 'lon': 91.1809},
+    'bogura': {'label': 'Bogura', 'lat': 24.8465, 'lon': 89.3773},
+    'jashore': {'label': 'Jashore', 'lat': 23.1664, 'lon': 89.2080},
+    'jessore': {'label': 'Jashore', 'lat': 23.1664, 'lon': 89.2080},
+    'narayanganj': {'label': 'Narayanganj', 'lat': 23.6238, 'lon': 90.5000},
+    'gazipur': {'label': 'Gazipur', 'lat': 23.9946, 'lon': 90.4203},
+    'feni': {'label': 'Feni', 'lat': 23.0236, 'lon': 91.3849},
+    'noakhali': {'label': 'Noakhali', 'lat': 22.8696, 'lon': 91.0995},
+    'pabna': {'label': 'Pabna', 'lat': 24.0065, 'lon': 89.2372},
+    'dinajpur': {'label': 'Dinajpur', 'lat': 25.6269, 'lon': 88.6378},
+}
 
 pwd_context = CryptContext(schemes=['argon2'], deprecated='auto')
 app = FastAPI(title='CDN Monitoring System')
@@ -109,6 +136,80 @@ def bootstrap_admin_if_needed():
 def startup():
     bootstrap_admin_if_needed()
 
+def range_spec(range_key: str):
+    normalized = (range_key or '24h').strip().lower()
+    now = int(time.time())
+    if normalized in ('24h', 'day', 'daily', 'today'):
+        return {'since': now - 86400, 'bucket': 3600, 'label': 'last 24 hours', 'stepLabel': 'hour'}
+    if normalized in ('7d', 'week', 'weekly'):
+        return {'since': now - 7 * 86400, 'bucket': 86400, 'label': 'last 7 days', 'stepLabel': 'day'}
+    if normalized in ('30d', 'month', 'monthly'):
+        return {'since': now - 30 * 86400, 'bucket': 86400, 'label': 'last 30 days', 'stepLabel': 'day'}
+    return {'since': now - 86400, 'bucket': 3600, 'label': 'last 24 hours', 'stepLabel': 'hour'}
+
+def query_history(cdn_name: str, range_key: str):
+    spec = range_spec(range_key)
+    rows = conn.execute(
+        'SELECT (ts / ?) * ? AS bucket_ts, ROUND(AVG(connection_count)) AS connection_count, COUNT(*) AS samples '
+        'FROM metrics WHERE cdn_name=? AND ts>=? GROUP BY bucket_ts ORDER BY bucket_ts',
+        (spec['bucket'], spec['bucket'], cdn_name, spec['since'])
+    ).fetchall()
+    return spec, [{'ts': r[0], 'connection_count': int(r[1] or 0), 'samples': r[2]} for r in rows]
+
+def query_all_series(range_key: str):
+    spec = range_spec(range_key)
+    rows = conn.execute(
+        'SELECT cdn_name, (ts / ?) * ? AS bucket_ts, ROUND(AVG(connection_count)) AS connection_count, COUNT(*) AS samples '
+        'FROM metrics WHERE ts>=? GROUP BY cdn_name, bucket_ts ORDER BY cdn_name, bucket_ts',
+        (spec['bucket'], spec['bucket'], spec['since'])
+    ).fetchall()
+    series = {}
+    for cdn_name, bucket_ts, connection_count, samples in rows:
+        series.setdefault(cdn_name, []).append({
+            'ts': bucket_ts,
+            'connection_count': int(connection_count or 0),
+            'samples': samples,
+        })
+    return spec, series
+
+def load_map_locations():
+    raw = {}
+    try:
+        with open(MAP_CONFIG_FILE, 'r', encoding='utf-8') as f:
+            raw = json.load(f) or {}
+    except FileNotFoundError:
+        raw = {}
+    except Exception as exc:
+        logger.warning('Failed to read map config: %s', exc)
+        raw = {}
+
+    resolved = []
+    for cdn_name, spec in raw.items():
+        place_name = None
+        lat = None
+        lon = None
+        if isinstance(spec, str):
+            place_name = spec
+        elif isinstance(spec, dict):
+            place_name = spec.get('place_name') or spec.get('place') or spec.get('location')
+            lat = spec.get('lat')
+            lon = spec.get('lon')
+
+        lookup = BANGLADESH_PLACES.get((place_name or '').strip().lower()) if place_name else None
+        if lookup:
+            lat = lookup['lat'] if lat is None else lat
+            lon = lookup['lon'] if lon is None else lon
+            place_name = lookup['label']
+
+        resolved.append({
+            'cdn_name': cdn_name,
+            'place_name': place_name or '',
+            'lat': lat,
+            'lon': lon,
+            'resolved': bool(lat is not None and lon is not None),
+        })
+    return resolved
+
 @app.get('/login', response_class=HTMLResponse)
 def login_page():
     bootstrap_hint = ''
@@ -151,132 +252,430 @@ def dashboard(token: Optional[str] = Cookie(None)):
     return f"""<!doctype html><html><head><title>CDN Monitor</title>
     <style>
     body{{font-family:Arial;background:#081018;color:#d8f7ff;padding:20px;margin:0}}
-    a{{color:#7fe8ff}}
-    .logout{{float:right}}
-    .topbar{{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}}
-    .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0}}
-    .card{{background:#0a1520;border:1px solid #1f3b4d;border-radius:10px;padding:14px}}
+    a{{color:#7fe8ff;text-decoration:none}}
+    a:hover{{text-decoration:underline}}
+    .wrap{{max-width:1400px;margin:0 auto}}
+    .nav{{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}}
+    .navlinks{{display:flex;gap:14px;flex-wrap:wrap}}
+    .badge{{display:inline-block;padding:4px 10px;border:1px solid #1f3b4d;border-radius:999px;background:#0a1520}}
+    .cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0}}
+    .card{{background:#0a1520;border:1px solid #1f3b4d;border-radius:12px;padding:14px}}
     .card .label{{font-size:12px;opacity:.75;margin-bottom:6px}}
-    .card .value{{font-size:24px;font-weight:700}}
-    .panel{{background:#0a1520;border:1px solid #1f3b4d;border-radius:10px;padding:14px;margin-top:16px}}
+    .card .value{{font-size:28px;font-weight:700}}
+    .panel{{background:#0a1520;border:1px solid #1f3b4d;border-radius:12px;padding:16px;margin-top:16px}}
     .panel h2{{margin:0 0 12px 0;font-size:18px}}
+    .muted{{opacity:.75}}
+    .legend{{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}}
+    .legend button{{background:#081018;color:#d8f7ff;border:1px solid #1f3b4d;padding:8px 10px;border-radius:999px;cursor:pointer}}
+    .legend button.off{{opacity:.45;text-decoration:line-through}}
+    .chart{{width:100%;height:320px;display:block;background:#081018;border:1px solid #1f3b4d;border-radius:10px}}
     table{{border-collapse:collapse;width:100%}}
     td,th{{border:1px solid #1f3b4d;padding:8px;text-align:left}}
-    select{{background:#081018;color:#d8f7ff;border:1px solid #1f3b4d;padding:8px;border-radius:6px}}
-    .muted{{opacity:.75}}
     .empty{{padding:16px 0;opacity:.75}}
-    .chart{{width:100%;height:220px;display:block;background:#081018;border:1px solid #1f3b4d;border-radius:8px}}
     </style>
-    </head><body><h1>CDN Monitoring System</h1><a href='/logout' class='logout'>Logout ({html.escape(username)})</a>
-    <p class='muted'>Endpoints: <a href='/api/latest'>/api/latest</a> · <a href='/api/history?cdn_name=cdn1'>/api/history</a></p>
-    <div class='grid' id='summary'></div>
-    <div class='panel'>
-      <h2>Trend</h2>
-      <div style='display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px'>
-        <label for='cdnSelect' class='muted'>CDN</label>
-        <select id='cdnSelect'></select>
-        <span id='trendMeta' class='muted'></span>
+    </head><body><div class='wrap'>
+    <div class='nav'>
+      <div>
+        <h1 style='margin:0'>CDN Monitoring System</h1>
+        <div class='muted' style='margin-top:6px'>Interactive overview, map, and history</div>
       </div>
-      <svg id='trendChart' class='chart' viewBox='0 0 900 220' preserveAspectRatio='none'></svg>
-      <div id='trendEmpty' class='empty' style='display:none'>No history yet for this CDN.</div>
+      <div class='navlinks'>
+        <a class='badge' href='/'>Home</a>
+        <a class='badge' href='/map'>Bangladesh map</a>
+        <a class='badge' href='/history'>History</a>
+        <a class='badge' href='/logout'>Logout ({html.escape(username)})</a>
+      </div>
     </div>
+
+    <div class='cards' id='cards'></div>
+
     <div class='panel'>
-      <h2>Latest metrics</h2><div id='app'></div>
+      <h2>All CDN graph</h2>
+      <div class='muted'>Default view: last 24 hours, all CDNs together</div>
+      <svg id='homeChart' class='chart' viewBox='0 0 1200 320' preserveAspectRatio='none'></svg>
+      <div id='legend' class='legend'></div>
     </div>
-    <script>
-    const state = {{ items: [], selected: null }};
-    function el(tag, attrs={{}}, text=''){{ const node=document.createElement(tag); for(const [k,v] of Object.entries(attrs)){{ if(k==='class') node.className=v; else if(k==='text') node.textContent=v; else node.setAttribute(k,v); }} if(text) node.textContent=text; return node; }}
-    function renderSummary(items){{
-      const totalConnections = items.reduce((sum, x) => sum + Number(x.connection_count || 0), 0);
-      const lastSeen = items.length ? new Date(Math.max(...items.map(x => x.ts))*1000).toLocaleString() : 'n/a';
-      const summary = document.getElementById('summary');
-      summary.replaceChildren(
-        el('div', {{class:'card'}}, ''),
-        el('div', {{class:'card'}}, ''),
-        el('div', {{class:'card'}}, '')
-      );
-      summary.children[0].innerHTML = '<div class="label">CDNs</div><div class="value">' + items.length + '</div>';
-      summary.children[1].innerHTML = '<div class="label">Total connections</div><div class="value">' + totalConnections + '</div>';
-      summary.children[2].innerHTML = '<div class="label">Last update</div><div class="value" style="font-size:16px">' + lastSeen + '</div>';
+
+    <div class='panel'>
+      <h2>Latest rows</h2>
+      <div id='latestTable'></div>
+    </div>
+
+    </div><script>
+    const state = {{ hidden: {{}} }};
+    const palette = ['#7fe8ff','#ff8f70','#a4ff70','#d370ff','#ffd670','#70ffd8','#ffa8d8','#9cb2ff'];
+
+    function esc(text){{ const div=document.createElement('div'); div.textContent=String(text ?? ''); return div.textContent; }}
+
+    function setCard(container, title, value, sub=''){{
+      const card=document.createElement('div'); card.className='card';
+      card.innerHTML = '<div class="label">'+esc(title)+'</div><div class="value">'+esc(value)+'</div>' + (sub ? '<div class="muted" style="margin-top:6px">'+esc(sub)+'</div>' : '');
+      container.appendChild(card);
     }}
-    function renderTable(items){{
-      const app=document.getElementById('app');
-      if(!items.length){{ app.innerHTML = '<div class="empty">No metrics yet.</div>'; return; }}
+
+    function renderCards(items){{
+      const cards=document.getElementById('cards');
+      cards.replaceChildren();
+      const total = items.reduce((sum, item) => sum + Number(item.connection_count || 0), 0);
+      setCard(cards, 'Total CDNs', items.length, 'current active sources');
+      setCard(cards, 'Total connections', total, 'live latest counts');
+      if(items.length){{
+        const hottest = [...items].sort((a,b)=>Number(b.connection_count||0)-Number(a.connection_count||0))[0];
+        setCard(cards, 'Highest count', hottest.connection_count, hottest.cdn_name + ' · ' + hottest.host);
+      }}
+      items.forEach(item => setCard(cards, item.cdn_name, item.connection_count, item.host + ' : ' + item.target_port));
+    }}
+
+    function renderLatestTable(items){{
+      const target=document.getElementById('latestTable');
+      if(!items.length){{ target.innerHTML = '<div class="empty">No data yet.</div>'; return; }}
       const table=document.createElement('table');
       const head=document.createElement('tr');
-      for (const title of ['CDN','Host','Port','Connections','Timestamp']){{ head.appendChild(el('th', {{text:title}})); }}
+      ['CDN','Host','Port','Connections','Timestamp'].forEach(title => {{ const th=document.createElement('th'); th.textContent=title; head.appendChild(th); }});
       table.appendChild(head);
-      for(const x of items){{
+      items.forEach(item => {{
         const tr=document.createElement('tr');
-        tr.appendChild(el('td', {{text:x.cdn_name}}));
-        tr.appendChild(el('td', {{text:x.host}}));
-        tr.appendChild(el('td', {{text:String(x.target_port)}}));
-        tr.appendChild(el('td', {{text:String(x.connection_count)}}));
-        tr.appendChild(el('td', {{text:new Date(x.ts*1000).toLocaleString()}}));
+        [item.cdn_name, item.host, String(item.target_port), String(item.connection_count), new Date(item.ts*1000).toLocaleString()].forEach(value => {{ const td=document.createElement('td'); td.textContent=value; tr.appendChild(td); }});
         table.appendChild(tr);
+      }});
+      target.replaceChildren(table);
+    }}
+
+    function renderLegend(series){{
+      const legend=document.getElementById('legend');
+      legend.replaceChildren();
+      const names=Object.keys(series).sort();
+      names.forEach((name, idx) => {{
+        const btn=document.createElement('button');
+        btn.textContent=name;
+        btn.style.borderColor=palette[idx % palette.length];
+        if(state.hidden[name]) btn.classList.add('off');
+        btn.onclick = () => {{ state.hidden[name] = !state.hidden[name]; loadGraphs(); }};
+        legend.appendChild(btn);
+      }});
+    }}
+
+    function renderHomeChart(series){{
+      const svg=document.getElementById('homeChart');
+      svg.replaceChildren();
+      const activeNames = Object.keys(series).filter(name => !state.hidden[name] && series[name] && series[name].length);
+      const allTimes = [...new Set(activeNames.flatMap(name => series[name].map(p => p.ts)))].sort((a,b)=>a-b);
+      const w=1200, h=320, padL=50, padR=18, padT=18, padB=34;
+      if(!allTimes.length){{
+        const empty=document.createElementNS('http://www.w3.org/2000/svg','text');
+        empty.setAttribute('x','20'); empty.setAttribute('y','30'); empty.setAttribute('fill','#d8f7ff'); empty.textContent='No graph data yet.';
+        svg.appendChild(empty); return;
       }}
-      app.replaceChildren(table);
+      const xAt = ts => padL + (allTimes.length === 1 ? 0 : ((allTimes.indexOf(ts) / (allTimes.length - 1)) * (w - padL - padR)));
+      const maxValue = Math.max(1, ...activeNames.flatMap(name => series[name].map(p => Number(p.connection_count || 0))));
+      const yAt = value => h - padB - ((Number(value || 0) / maxValue) * (h - padT - padB));
+      for(let i=0;i<5;i++){{
+        const y = padT + i * ((h - padT - padB)/4);
+        const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1', padL); line.setAttribute('x2', w-padR); line.setAttribute('y1', y); line.setAttribute('y2', y);
+        line.setAttribute('stroke', '#1f3b4d'); line.setAttribute('stroke-width', '1');
+        svg.appendChild(line);
+      }}
+      activeNames.forEach((name, idx) => {{
+        const points = series[name] || [];
+        const lookup = new Map(points.map(p => [p.ts, p.connection_count]));
+        let pathD = '';
+        allTimes.forEach(ts => {{
+          if(!lookup.has(ts)) return;
+          const x = xAt(ts).toFixed(1);
+          const y = yAt(lookup.get(ts)).toFixed(1);
+          pathD += (pathD ? ' L ' : 'M ') + x + ' ' + y;
+        }});
+        if(!pathD) return;
+        const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+        path.setAttribute('d', pathD);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', palette[idx % palette.length]);
+        path.setAttribute('stroke-width', '3');
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
+        svg.appendChild(path);
+        points.forEach(point => {{
+          const circle=document.createElementNS('http://www.w3.org/2000/svg','circle');
+          circle.setAttribute('cx', xAt(point.ts));
+          circle.setAttribute('cy', yAt(point.connection_count));
+          circle.setAttribute('r', '4');
+          circle.setAttribute('fill', palette[idx % palette.length]);
+          const title=document.createElementNS('http://www.w3.org/2000/svg','title');
+          title.textContent = name + ' · ' + point.connection_count + ' @ ' + new Date(point.ts*1000).toLocaleString();
+          circle.appendChild(title);
+          svg.appendChild(circle);
+        }});
+      }});
+      const axis=document.createElementNS('http://www.w3.org/2000/svg','line');
+      axis.setAttribute('x1', padL); axis.setAttribute('x2', w-padR); axis.setAttribute('y1', h-padB); axis.setAttribute('y2', h-padB);
+      axis.setAttribute('stroke', '#7fe8ff'); axis.setAttribute('stroke-width', '1');
+      svg.appendChild(axis);
+      const maxLabel=document.createElementNS('http://www.w3.org/2000/svg','text');
+      maxLabel.setAttribute('x', '12'); maxLabel.setAttribute('y', '22'); maxLabel.setAttribute('fill', '#d8f7ff'); maxLabel.setAttribute('font-size', '12');
+      maxLabel.textContent = 'max ' + maxValue;
+      svg.appendChild(maxLabel);
     }}
-    function renderSelector(items){{
-      const select = document.getElementById('cdnSelect');
-      const names = [...new Set(items.map(x => x.cdn_name))];
-      const current = state.selected && names.includes(state.selected) ? state.selected : names[0] || '';
-      select.replaceChildren(...names.map(name => el('option', {{value:name, text:name}})));
-      select.value = current;
-      state.selected = current;
-      select.onchange = () => {{ state.selected = select.value; loadTrend(); }};
-      document.getElementById('trendMeta').textContent = current ? ('showing last 60 minutes for ' + current) : '';
+
+    async function loadGraphs(){{
+      const [latestRes, seriesRes] = await Promise.all([fetch('/api/latest'), fetch('/api/series?range=24h')]);
+      const latest = await latestRes.json();
+      const series = await seriesRes.json();
+      renderCards(latest.items || []);
+      renderLegend(series.series || {{}});
+      renderHomeChart(series.series || {{}});
+      renderLatestTable(latest.items || []);
     }}
-    function drawBars(points){{
-      const svg = document.getElementById('trendChart');
-      const empty = document.getElementById('trendEmpty');
+
+    loadGraphs(); setInterval(loadGraphs, 5000);
+    </script></body></html>"""
+
+@app.get('/map', response_class=HTMLResponse)
+def map_page(token: Optional[str] = Cookie(None)):
+    username = username_from_token(token)
+    if not username:
+        return RedirectResponse(url='/login', status_code=303)
+    return f"""<!doctype html><html><head><title>CDN Monitor Map</title>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' integrity='sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=' crossorigin=''/>
+    <style>
+    body{{font-family:Arial;background:#081018;color:#d8f7ff;padding:20px;margin:0}}
+    .wrap{{max-width:1400px;margin:0 auto}}
+    .nav{{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}}
+    .navlinks{{display:flex;gap:14px;flex-wrap:wrap}}
+    .badge{{display:inline-block;padding:4px 10px;border:1px solid #1f3b4d;border-radius:999px;background:#0a1520;color:#7fe8ff;text-decoration:none}}
+    .grid{{display:grid;grid-template-columns:1.5fr .9fr;gap:14px}}
+    #map{{height:760px;border:1px solid #1f3b4d;border-radius:12px;overflow:hidden}}
+    .panel{{background:#0a1520;border:1px solid #1f3b4d;border-radius:12px;padding:16px}}
+    .item{{border-bottom:1px solid #1f3b4d;padding:10px 0}}
+    .item:last-child{{border-bottom:none}}
+    .muted{{opacity:.75}}
+    </style>
+    </head><body><div class='wrap'>
+    <div class='nav'>
+      <div>
+        <h1 style='margin:0'>Bangladesh CDN Map</h1>
+        <div class='muted' style='margin-top:6px'>Configure map points in <code>/app/data/cdn_map.json</code></div>
+      </div>
+      <div class='navlinks'>
+        <a class='badge' href='/'>Home</a>
+        <a class='badge' href='/map'>Bangladesh map</a>
+        <a class='badge' href='/history'>History</a>
+        <a class='badge' href='/logout'>Logout ({html.escape(username)})</a>
+      </div>
+    </div>
+    <div class='grid'>
+      <div id='map'></div>
+      <div class='panel'>
+        <h2 style='margin-top:0'>Configured CDNs</h2>
+        <div id='markerList'></div>
+      </div>
+    </div>
+    </div>
+    <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' integrity='sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=' crossorigin=''></script>
+    <script>
+    async function initMap(){{
+      const r = await fetch('/api/map-config');
+      const d = await r.json();
+      const map = L.map('map', {{ zoomControl: true }}).setView([23.6850, 90.3563], 7);
+      L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap contributors'
+      }}).addTo(map);
+      const bounds = [[20.5, 88.0], [26.8, 92.8]];
+      map.fitBounds(bounds);
+      const list = document.getElementById('markerList');
+      list.replaceChildren();
+      const markers = (d.items || []).filter(x => x.resolved);
+      if(!markers.length){{
+        list.innerHTML = '<div class="muted">No map config yet. Add entries in /app/data/cdn_map.json.</div>';
+        return;
+      }}
+      markers.forEach((item, idx) => {{
+        const color = ['#7fe8ff','#ff8f70','#a4ff70','#d370ff','#ffd670','#70ffd8'][idx % 6];
+        const marker = L.circleMarker([item.lat, item.lon], {{ radius: 10, color, fillColor: color, fillOpacity: 0.85, weight: 2 }}).addTo(map);
+        marker.bindPopup(`<b>${{item.cdn_name}}</b><br>${{item.place_name}}<br>Count: ${{item.connection_count ?? 'n/a'}}`);
+        const row = document.createElement('div');
+        row.className = 'item';
+        row.innerHTML = '<b>' + item.cdn_name + '</b><br><span class="muted">' + item.place_name + '</span><br><span class="muted">count: ' + (item.connection_count ?? 'n/a') + '</span>';
+        list.appendChild(row);
+      }});
+      const unresolved = (d.items || []).filter(x => !x.resolved);
+      unresolved.forEach(item => {{
+        const row = document.createElement('div');
+        row.className = 'item';
+        row.innerHTML = '<b>' + item.cdn_name + '</b><br><span class="muted">Unresolved place: ' + (item.place_name || 'missing') + '</span>';
+        list.appendChild(row);
+      }});
+    }}
+    initMap();
+    </script></body></html>"""
+
+@app.get('/history', response_class=HTMLResponse)
+def history_page(token: Optional[str] = Cookie(None)):
+    username = username_from_token(token)
+    if not username:
+        return RedirectResponse(url='/login', status_code=303)
+    return f"""<!doctype html><html><head><title>CDN Monitor History</title>
+    <style>
+    body{{font-family:Arial;background:#081018;color:#d8f7ff;padding:20px;margin:0}}
+    a{{color:#7fe8ff;text-decoration:none}}
+    a:hover{{text-decoration:underline}}
+    .wrap{{max-width:1400px;margin:0 auto}}
+    .nav{{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}}
+    .navlinks{{display:flex;gap:14px;flex-wrap:wrap}}
+    .badge{{display:inline-block;padding:4px 10px;border:1px solid #1f3b4d;border-radius:999px;background:#0a1520}}
+    .panel{{background:#0a1520;border:1px solid #1f3b4d;border-radius:12px;padding:16px;margin-top:16px}}
+    .controls{{display:flex;gap:12px;flex-wrap:wrap;align-items:center}}
+    select{{background:#081018;color:#d8f7ff;border:1px solid #1f3b4d;padding:8px;border-radius:6px}}
+    .chart{{width:100%;height:340px;display:block;background:#081018;border:1px solid #1f3b4d;border-radius:10px}}
+    .cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0}}
+    .card{{background:#0a1520;border:1px solid #1f3b4d;border-radius:12px;padding:14px}}
+    .card .label{{font-size:12px;opacity:.75;margin-bottom:6px}}
+    .card .value{{font-size:24px;font-weight:700}}
+    table{{border-collapse:collapse;width:100%}}
+    td,th{{border:1px solid #1f3b4d;padding:8px;text-align:left}}
+    .muted{{opacity:.75}}
+    .empty{{padding:16px 0;opacity:.75}}
+    </style>
+    </head><body><div class='wrap'>
+    <div class='nav'>
+      <div>
+        <h1 style='margin:0'>Historical data</h1>
+        <div class='muted' style='margin-top:6px'>Default is 24 hours, switch to weekly or monthly anytime.</div>
+      </div>
+      <div class='navlinks'>
+        <a class='badge' href='/'>Home</a>
+        <a class='badge' href='/map'>Bangladesh map</a>
+        <a class='badge' href='/history'>History</a>
+        <a class='badge' href='/logout'>Logout ({html.escape(username)})</a>
+      </div>
+    </div>
+
+    <div class='panel'>
+      <div class='controls'>
+        <label>CDN <select id='cdnSelect'></select></label>
+        <label>Range <select id='rangeSelect'>
+          <option value='24h'>Today (24 hours)</option>
+          <option value='7d'>Weekly</option>
+          <option value='30d'>Monthly</option>
+        </select></label>
+        <span id='historyMeta' class='muted'></span>
+      </div>
+      <div class='cards' id='historyCards'></div>
+      <svg id='historyChart' class='chart' viewBox='0 0 1200 340' preserveAspectRatio='none'></svg>
+      <div id='historyEmpty' class='empty' style='display:none'>No historical data for this selection yet.</div>
+    </div>
+
+    <div class='panel'>
+      <h2 style='margin-top:0'>Points</h2>
+      <div id='historyTable'></div>
+    </div>
+    </div>
+    <script>
+    const historyState = {{ cdn: null, range: '24h' }};
+    const colors = ['#7fe8ff'];
+
+    function makeCard(parent, label, value, sub=''){{
+      const card=document.createElement('div'); card.className='card';
+      card.innerHTML = '<div class="label">'+label+'</div><div class="value">'+value+'</div>' + (sub ? '<div class="muted" style="margin-top:6px">'+sub+'</div>' : '');
+      parent.appendChild(card);
+    }}
+
+    function drawSingleSeries(points){{
+      const svg=document.getElementById('historyChart');
+      const empty=document.getElementById('historyEmpty');
       svg.replaceChildren();
       if(!points.length){{ empty.style.display='block'; return; }}
       empty.style.display='none';
-      const max = Math.max(...points.map(p => Number(p.connection_count || 0)), 1);
-      const w = 900, h = 220, pad = 18;
-      const barW = Math.max(8, Math.floor((w - pad*2) / points.length) - 4);
-      const step = (w - pad*2) / points.length;
-      points.forEach((p, i) => {{
-        const val = Number(p.connection_count || 0);
-        const barH = Math.max(2, Math.round((val / max) * (h - 50)));
-        const x = pad + i * step;
-        const y = h - 28 - barH;
-        const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
-        rect.setAttribute('x', x.toFixed(1));
-        rect.setAttribute('y', y);
-        rect.setAttribute('width', barW);
-        rect.setAttribute('height', barH);
-        rect.setAttribute('rx', 3);
-        rect.setAttribute('fill', '#7fe8ff');
-        svg.appendChild(rect);
+      const w=1200, h=340, padL=50, padR=18, padT=18, padB=38;
+      const maxValue=Math.max(1, ...points.map(p => Number(p.connection_count || 0)));
+      const minTs=points[0].ts, maxTs=points[points.length-1].ts;
+      const xAt = ts => padL + ((ts - minTs) / Math.max(1, (maxTs - minTs))) * (w - padL - padR);
+      const yAt = value => h - padB - ((Number(value || 0) / maxValue) * (h - padT - padB));
+      for(let i=0;i<5;i++){{
+        const y = padT + i * ((h - padT - padB)/4);
+        const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1', padL); line.setAttribute('x2', w-padR); line.setAttribute('y1', y); line.setAttribute('y2', y);
+        line.setAttribute('stroke', '#1f3b4d'); line.setAttribute('stroke-width', '1');
+        svg.appendChild(line);
+      }}
+      let d='';
+      points.forEach((p, idx) => {{
+        const x=xAt(p.ts).toFixed(1), y=yAt(p.connection_count).toFixed(1);
+        d += (idx ? ' L ' : 'M ') + x + ' ' + y;
       }});
-      const axis = document.createElementNS('http://www.w3.org/2000/svg','line');
-      axis.setAttribute('x1','16'); axis.setAttribute('x2','884'); axis.setAttribute('y1','192'); axis.setAttribute('y2','192');
-      axis.setAttribute('stroke','#1f3b4d'); axis.setAttribute('stroke-width','1');
+      const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', '#7fe8ff');
+      path.setAttribute('stroke-width', '3');
+      svg.appendChild(path);
+      points.forEach(point => {{
+        const circle=document.createElementNS('http://www.w3.org/2000/svg','circle');
+        circle.setAttribute('cx', xAt(point.ts));
+        circle.setAttribute('cy', yAt(point.connection_count));
+        circle.setAttribute('r', '4');
+        circle.setAttribute('fill', '#7fe8ff');
+        const title=document.createElementNS('http://www.w3.org/2000/svg','title');
+        title.textContent = point.connection_count + ' @ ' + new Date(point.ts*1000).toLocaleString();
+        circle.appendChild(title);
+        svg.appendChild(circle);
+      }});
+      const axis=document.createElementNS('http://www.w3.org/2000/svg','line');
+      axis.setAttribute('x1', padL); axis.setAttribute('x2', w-padR); axis.setAttribute('y1', h-padB); axis.setAttribute('y2', h-padB);
+      axis.setAttribute('stroke', '#7fe8ff'); axis.setAttribute('stroke-width', '1');
       svg.appendChild(axis);
-      const label = document.createElementNS('http://www.w3.org/2000/svg','text');
-      label.setAttribute('x','18'); label.setAttribute('y','16'); label.setAttribute('fill','#d8f7ff'); label.setAttribute('font-size','12');
-      label.textContent = 'max connections: ' + max;
-      svg.appendChild(label);
     }}
-    async function loadTrend(){{
-      if(!state.selected){{ drawBars([]); return; }}
-      const r=await fetch('/api/history?cdn_name=' + encodeURIComponent(state.selected) + '&minutes=60');
+
+    function renderHistoryTable(points){{
+      const target=document.getElementById('historyTable');
+      if(!points.length){{ target.innerHTML = '<div class="empty">No points yet.</div>'; return; }}
+      const table=document.createElement('table');
+      const head=document.createElement('tr');
+      ['Timestamp','Connections'].forEach(title => {{ const th=document.createElement('th'); th.textContent=title; head.appendChild(th); }});
+      table.appendChild(head);
+      points.forEach(point => {{
+        const tr=document.createElement('tr');
+        [new Date(point.ts*1000).toLocaleString(), String(point.connection_count)].forEach(value => {{ const td=document.createElement('td'); td.textContent=value; tr.appendChild(td); }});
+        table.appendChild(tr);
+      }});
+      target.replaceChildren(table);
+    }}
+
+    async function loadHistory(){{
+      if(!historyState.cdn) return;
+      const r=await fetch('/api/history?cdn_name=' + encodeURIComponent(historyState.cdn) + '&range=' + encodeURIComponent(historyState.range));
       const d=await r.json();
-      document.getElementById('trendMeta').textContent = 'showing last 60 minutes for ' + state.selected + ' (' + d.points.length + ' points)';
-      drawBars(d.points || []);
+      document.getElementById('historyMeta').textContent = d.label + ' · ' + historyState.cdn;
+      const points = d.points || [];
+      const current = points.length ? points[points.length - 1].connection_count : 'n/a';
+      const max = points.length ? Math.max(...points.map(p => p.connection_count)) : 0;
+      const avg = points.length ? Math.round(points.reduce((sum,p)=>sum + Number(p.connection_count||0),0) / points.length) : 0;
+      const cards=document.getElementById('historyCards');
+      cards.replaceChildren();
+      makeCard(cards, 'Current', current, 'latest point');
+      makeCard(cards, 'Maximum', max, 'in selected range');
+      makeCard(cards, 'Average', avg, 'in selected range');
+      drawSingleSeries(points);
+      renderHistoryTable(points);
     }}
-    async function load(){{
-      const r=await fetch('/api/latest');
-      const d=await r.json();
-      state.items = d.items || [];
-      renderSummary(state.items);
-      renderSelector(state.items);
-      renderTable(state.items);
-      await loadTrend();
+
+    async function initHistory(){{
+      const latest = await (await fetch('/api/latest')).json();
+      const names = (latest.items || []).map(x => x.cdn_name);
+      const select = document.getElementById('cdnSelect');
+      select.replaceChildren(...names.map(name => {{ const opt=document.createElement('option'); opt.value=name; opt.textContent=name; return opt; }}));
+      historyState.cdn = names[0] || '';
+      select.value = historyState.cdn;
+      select.onchange = () => {{ historyState.cdn = select.value; loadHistory(); }};
+      const rangeSelect = document.getElementById('rangeSelect');
+      rangeSelect.onchange = () => {{ historyState.range = rangeSelect.value; loadHistory(); }};
+      historyState.range = rangeSelect.value;
+      loadHistory();
     }}
-    load(); setInterval(load,5000);
+
+    initHistory();
     </script></body></html>"""
 
 @app.post('/api/ingest')
@@ -307,10 +706,26 @@ def latest():
     ]}
 
 @app.get('/api/history')
-def history(cdn_name: str, minutes: int = 60):
-    since = int(time.time()) - minutes * 60
-    rows = conn.execute(
-        'SELECT ts, connection_count FROM metrics WHERE cdn_name=? AND ts>=? ORDER BY ts',
-        (cdn_name, since)
-    ).fetchall()
-    return {'cdn_name': cdn_name, 'points': [{'ts': r[0], 'connection_count': r[1]} for r in rows]}
+def history(cdn_name: str, range: str = '24h'):
+    spec, points = query_history(cdn_name, range)
+    return {'cdn_name': cdn_name, 'range': range, 'label': spec['label'], 'stepLabel': spec['stepLabel'], 'points': points}
+
+@app.get('/api/series')
+def series(range: str = '24h'):
+    spec, series_data = query_all_series(range)
+    return {'range': range, 'label': spec['label'], 'stepLabel': spec['stepLabel'], 'series': series_data}
+
+@app.get('/api/map-config')
+def map_config():
+    latest_rows = {r[1]: {'ts': r[0], 'connection_count': r[4], 'host': r[2], 'target_port': r[3]} for r in conn.execute("""
+    SELECT ts, cdn_name, host, target_port, connection_count
+    FROM metrics
+    WHERE (cdn_name, ts) IN (
+      SELECT cdn_name, MAX(ts) FROM metrics GROUP BY cdn_name
+    )
+    """).fetchall()}
+    markers = []
+    for item in load_map_locations():
+        latest = latest_rows.get(item['cdn_name'], {})
+        markers.append({**item, **latest})
+    return {'items': markers}
