@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS users (
 conn.commit()
 
 TOKEN = os.getenv('INGEST_TOKEN', 'change-me')
+LEGACY_API_KEY = os.getenv('LEGACY_API_KEY', '9PsvA96mPAIO3PI9')
 JWT_SECRET = os.getenv('JWT_SECRET', 'change-me-in-production')
 JWT_ALGORITHM = 'HS256'
 SESSION_HOURS = int(os.getenv('SESSION_HOURS', '24'))
@@ -79,6 +80,12 @@ class MetricIn(BaseModel):
     target_port: int
     connection_count: int
     ts: Optional[int] = None
+
+class LegacyMetricIn(BaseModel):
+    server_id: str
+    server_ip: Optional[str] = None
+    connection_count: int
+    timestamp: Optional[str] = None
 
 class MapConfigIn(BaseModel):
     cdn_name: str
@@ -938,6 +945,18 @@ def ingest(metric: MetricIn, x_agent_token: Optional[str] = Header(None)):
     )
     conn.commit()
     return {'status': 'ok', 'ts': ts}
+
+@app.post('/api/metrics')
+def legacy_metrics(metric: LegacyMetricIn, x_api_key: Optional[str] = Header(None), x_agent_token: Optional[str] = Header(None)):
+    if x_api_key not in (TOKEN, LEGACY_API_KEY) and x_agent_token not in (TOKEN,):
+        raise HTTPException(status_code=401, detail='invalid api key')
+    ts = int(datetime.fromisoformat(metric.timestamp.replace('Z', '+00:00')).timestamp()) if metric.timestamp else int(time.time())
+    conn.execute(
+        'INSERT INTO metrics(ts, cdn_name, host, target_port, connection_count) VALUES (?, ?, ?, ?, ?)',
+        (ts, metric.server_id, metric.server_ip or '', 443, metric.connection_count)
+    )
+    conn.commit()
+    return {'status': 'ok', 'ts': ts, 'cdn_name': metric.server_id}
 
 @app.get('/api/latest')
 def latest():

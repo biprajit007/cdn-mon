@@ -32,6 +32,7 @@ services:
     depends_on:
       - server
     ports:
+      - "18080:18080"
       - "18443:18443"
       - "18880:18880"
     volumes:
