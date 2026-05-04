@@ -527,8 +527,10 @@ def map_page(token: Optional[str] = Cookie(None)):
     .item:last-child{{border-bottom:none}}
     .muted{{opacity:.75}}
     .row{{display:flex;align-items:center;gap:8px}}
-    .pulse-marker{{width:16px;height:16px;border-radius:999px;background:#27d36b;box-shadow:0 0 0 0 rgba(39,211,107,.65);animation:pulse 1.4s infinite;position:relative}}
-    .pulse-marker::after{{content:'';position:absolute;inset:4px;border-radius:999px;background:#b9ffd2;opacity:.95}}
+    .beeper{{width:16px;height:16px;border-radius:999px;background:#60707c;box-shadow:none;position:relative;flex:0 0 16px}}
+    .beeper.live{{background:#27d36b;box-shadow:0 0 0 0 rgba(39,211,107,.65);animation:pulse 1.4s infinite}}
+    .beeper::after{{content:'';position:absolute;inset:4px;border-radius:999px;background:rgba(255,255,255,.8);opacity:.25}}
+    .beeper.live::after{{background:#b9ffd2;opacity:.95}}
     @keyframes pulse{{0%{{box-shadow:0 0 0 0 rgba(39,211,107,.55)}}70%{{box-shadow:0 0 0 14px rgba(39,211,107,0)}}100%{{box-shadow:0 0 0 0 rgba(39,211,107,0)}}}}
     </style>
     </head><body><div class='wrap'>
@@ -555,6 +557,10 @@ def map_page(token: Optional[str] = Cookie(None)):
     </div>
     <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' integrity='sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=' crossorigin=''></script>
     <script>
+    function beeperHtml(isLive){{
+      return '<span class="beeper' + (isLive ? ' live' : '') + '"></span>';
+    }}
+
     async function initMap(){{
       const r = await fetch('/api/map-config');
       const d = await r.json();
@@ -574,19 +580,20 @@ def map_page(token: Optional[str] = Cookie(None)):
         return;
       }}
       markers.forEach((item, idx) => {{
-        const icon = L.divIcon({{ className: '', html: '<div class="pulse-marker"></div>', iconSize: [16,16], iconAnchor: [8,8] }});
+        const live = item.ts !== null && Number(item.connection_count || 0) > 0;
+        const icon = L.divIcon({{ className: '', html: '<div class="beeper' + (live ? ' live' : '') + '"></div>', iconSize: [16,16], iconAnchor: [8,8] }});
         const marker = L.marker([item.lat, item.lon], {{ icon }}).addTo(map);
         marker.bindPopup(`<b>${{item.cdn_name}}</b><br>${{item.place_name}}<br>Count: ${{item.connection_count ?? 'n/a'}}`);
         const row = document.createElement('div');
         row.className = 'item';
-        row.innerHTML = '<div class="row"><span class="pulse-marker" style="display:inline-block;transform:scale(.65)"></span><b>' + item.cdn_name + '</b></div><div class="muted">' + item.place_name + '</div><div class="muted">count: ' + (item.connection_count ?? 'n/a') + '</div>';
+        row.innerHTML = '<div class="row">' + beeperHtml(live) + '<b>' + item.cdn_name + '</b></div><div class="muted">' + item.place_name + '</div><div class="muted">count: ' + (item.connection_count ?? 'n/a') + '</div>';
         list.appendChild(row);
       }});
       const unresolved = (d.items || []).filter(x => !x.resolved);
       unresolved.forEach(item => {{
         const row = document.createElement('div');
         row.className = 'item';
-        row.innerHTML = '<b>' + item.cdn_name + '</b><br><span class="muted">Unresolved place: ' + (item.place_name || 'missing') + '</span>';
+        row.innerHTML = '<div class="row">' + beeperHtml(false) + '<b>' + item.cdn_name + '</b></div><span class="muted">Unresolved place: ' + (item.place_name || 'missing') + '</span>';
         list.appendChild(row);
       }});
     }}
@@ -768,7 +775,6 @@ INGEST_TOKEN=...</pre>
       const seeds = [
         {cdn_name:'cdn1', place_name:'Dhaka'},
         {cdn_name:'cdn2', place_name:'Chattogram'},
-        {cdn_name:'cdn3', place_name:'Khulna'},
       ];
       for (const item of seeds) {
         await fetch('/api/map-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(item) });
