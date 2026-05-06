@@ -56,8 +56,8 @@ Example format:
 
 ```json
 {
-  "cdn1": "Dhaka",
-  "cdn2": { "place_name": "Chattogram" }
+  "cdn1": { "place_name": "Dhaka", "area_name": "inside-country" },
+  "cdn2": { "place_name": "Chattogram", "area_name": "inside-country" }
 }
 ```
 

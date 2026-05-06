@@ -100,7 +100,9 @@ WORLD_PLACES = {
 
 ALL_PLACES = {**BANGLADESH_PLACES, **WORLD_PLACES}
 
-ALLOWED_CDNS = {'cdn1', 'cdn2'}
+def get_configured_cdns() -> set:
+    raw = load_map_config_raw()
+    return set(raw.keys()) if raw else set()
 
 pwd_context = CryptContext(schemes=['argon2'], deprecated='auto')
 app = FastAPI(title='CDN Monitoring System')
@@ -121,6 +123,7 @@ class LegacyMetricIn(BaseModel):
 class MapConfigIn(BaseModel):
     cdn_name: str
     place_name: Optional[str] = None
+    area_name: Optional[str] = None
     lat: Optional[float] = None
     lon: Optional[float] = None
     ip: Optional[str] = None
@@ -203,11 +206,16 @@ def query_history(cdn_name: str, range_key: str):
 
 def query_all_series(range_key: str):
     spec = range_spec(range_key)
+    cdns = get_configured_cdns()
+    if not cdns:
+        return spec, {}
+    ph = ','.join('?' * len(cdns))
+    cdn_list = list(cdns)
     rows = conn.execute(
-        "SELECT cdn_name, (ts / ?) * ? AS bucket_ts, ROUND(AVG(connection_count)) AS connection_count, COUNT(*) AS samples "
-        "FROM metrics WHERE cdn_name IN ('cdn1','cdn2') AND target_port=443 AND ts>=? "
-        "GROUP BY cdn_name, bucket_ts ORDER BY cdn_name, bucket_ts",
-        (spec['bucket'], spec['bucket'], spec['since'])
+        f"SELECT cdn_name, (ts / ?) * ? AS bucket_ts, ROUND(AVG(connection_count)) AS connection_count, COUNT(*) AS samples "
+        f"FROM metrics WHERE cdn_name IN ({ph}) AND target_port=443 AND ts>=? "
+        f"GROUP BY cdn_name, bucket_ts ORDER BY cdn_name, bucket_ts",
+        (spec['bucket'], spec['bucket'], *cdn_list, spec['since'])
     ).fetchall()
     series = {}
     for cdn_name, bucket_ts, connection_count, samples in rows:
@@ -229,10 +237,12 @@ def load_map_locations():
         ip = None
         landmark = None
         emoji = None
+        area_name = None
         if isinstance(spec, str):
             place_name = spec
         elif isinstance(spec, dict):
             place_name = spec.get('place_name') or spec.get('place') or spec.get('location')
+            area_name = spec.get('area_name') or ''
             lat = spec.get('lat')
             lon = spec.get('lon')
             ip = spec.get('ip')
@@ -255,6 +265,7 @@ def load_map_locations():
         resolved.append({
             'cdn_name': cdn_name,
             'place_name': place_name or '',
+            'area_name': area_name or '',
             'lat': lat,
             'lon': lon,
             'ip': ip or '',
@@ -282,17 +293,22 @@ def save_map_config_raw(raw):
         json.dump(raw, f, indent=2, ensure_ascii=False, sort_keys=True)
 
 def get_latest_rows_by_cdn():
-    rows = conn.execute("""
+    cdns = get_configured_cdns()
+    if not cdns:
+        return {}
+    ph = ','.join('?' * len(cdns))
+    cdn_list = list(cdns)
+    rows = conn.execute(f"""
     SELECT ts, cdn_name, host, target_port, connection_count
     FROM metrics
-    WHERE cdn_name IN ('cdn1','cdn2') AND target_port = 443
+    WHERE cdn_name IN ({ph}) AND target_port = 443
     AND (cdn_name, ts) IN (
       SELECT cdn_name, MAX(ts) FROM metrics
-      WHERE cdn_name IN ('cdn1','cdn2') AND target_port = 443
+      WHERE cdn_name IN ({ph}) AND target_port = 443
       GROUP BY cdn_name
     )
     ORDER BY cdn_name
-    """).fetchall()
+    """, cdn_list + cdn_list).fetchall()
     return {
         r[1]: {'ts': r[0], 'cdn_name': r[1], 'host': r[2], 'target_port': r[3], 'connection_count': r[4]}
         for r in rows
@@ -300,7 +316,7 @@ def get_latest_rows_by_cdn():
 
 def merge_latest_with_config(default_count=0):
     latest_rows = get_latest_rows_by_cdn()
-    configured = [item for item in load_map_locations() if item['cdn_name'] in ALLOWED_CDNS]
+    configured = load_map_locations()
     items = []
     for item in configured:
         row = latest_rows.get(item['cdn_name'])
@@ -595,6 +611,7 @@ def map_page(token: Optional[str] = Cookie(None)):
     .dot.on{background:#27d36b;animation:glow 1.4s infinite}
     @keyframes glow{0%{box-shadow:0 0 0 0 rgba(39,211,107,.7)}70%{box-shadow:0 0 0 8px rgba(39,211,107,0)}100%{box-shadow:0 0 0 0 rgba(39,211,107,0)}}
     .card-name{font-weight:700;font-size:14px}
+    .card-sub{font-size:11px;opacity:.7;line-height:1.2;margin-top:-2px;margin-bottom:6px}
     .card-count{font-size:28px;font-weight:700;color:#27d36b;line-height:1.1}
     .card-count.off{color:#60707c}
     .section-title{font-size:13px;font-weight:700;color:#7fe8ff;margin:10px 0 6px}
@@ -660,6 +677,7 @@ def map_page(token: Optional[str] = Cookie(None)):
       const live = isLive(item);
       return '<div class="popup-name">' + item.cdn_name + '</div>'
         + (item.place_name ? '<div>' + item.place_name + '</div>' : '')
+        + (item.area_name ? '<div style="color:#7fe8ff;font-size:12px">' + item.area_name + '</div>' : '')
         + (item.ip ? '<div style="font-family:monospace;font-size:12px;color:#7fe8ff">' + item.ip + '</div>' : '')
         + '<div class="popup-count">' + cnt + '</div>'
         + '<div style="color:' + (live?'#27d36b':'#60707c') + ';font-size:12px">' + (live?'● Live':'○ Waiting') + '</div>';
@@ -693,6 +711,7 @@ def map_page(token: Optional[str] = Cookie(None)):
         card.className = 'cdn-card' + (live?' live-card':'');
         card.id = 'card-' + item.cdn_name;
         card.innerHTML = '<div class="card-top"><span class="dot' + (live?' on':'') + '"></span><span class="card-name">' + item.cdn_name + '</span></div>'
+          + ((item.place_name || item.area_name) ? '<div class="card-sub">' + [item.place_name, item.area_name].filter(Boolean).join(' · ') + '</div>' : '')
           + '<div class="card-count' + (live?'':' off') + '" id="cnt-' + item.cdn_name + '">' + cnt + '</div>';
         list.appendChild(card);
       });
@@ -795,6 +814,7 @@ def management_page(token: Optional[str] = Cookie(None)):
         <form id='cdnForm'>
           <label>CDN name</label><input id='cdnName' required placeholder='cdn2'>
           <label>Place name</label><input id='placeName' required placeholder='Dhaka'>
+          <label>Area name (optional)</label><input id='areaName' placeholder='inside-country'>
           <label>IP address</label><input id='cdnIp' required placeholder='152.42.176.75'>
           <label>Latitude (optional)</label><input id='lat' type='number' step='any' placeholder='23.8103'>
           <label>Longitude (optional)</label><input id='lon' type='number' step='any' placeholder='90.4125'>
@@ -847,7 +867,7 @@ INGEST_TOKEN=...</pre>
       }
       const table=document.createElement('table');
       const head=document.createElement('tr');
-      ['Status','CDN','IP','Place','Lat/Lon','Live count','Actions'].forEach(title => { const th=document.createElement('th'); th.textContent=title; head.appendChild(th); });
+      ['Status','CDN','IP','Place','Area','Lat/Lon','Live count','Actions'].forEach(title => { const th=document.createElement('th'); th.textContent=title; head.appendChild(th); });
       table.appendChild(head);
       items.forEach(item => {
         const row=document.createElement('tr');
@@ -866,6 +886,7 @@ INGEST_TOKEN=...</pre>
         const cdnTd = document.createElement('td'); cdnTd.textContent = item.cdn_name; row.appendChild(cdnTd);
         const ipTd = document.createElement('td'); ipTd.textContent = item.ip || ''; row.appendChild(ipTd);
         const placeTd = document.createElement('td'); placeTd.textContent = item.place_name || ''; row.appendChild(placeTd);
+        const areaTd = document.createElement('td'); areaTd.textContent = item.area_name || ''; row.appendChild(areaTd);
         const latLonTd = document.createElement('td'); latLonTd.textContent = (item.lat != null && item.lon != null) ? item.lat + ', ' + item.lon : 'unresolved'; row.appendChild(latLonTd);
         const liveTd = document.createElement('td'); liveTd.textContent = live ? String(live.connection_count) : '0'; row.appendChild(liveTd);
 
@@ -879,6 +900,7 @@ INGEST_TOKEN=...</pre>
           document.getElementById('cdnName').value = item.cdn_name;
           document.getElementById('cdnIp').value = item.ip || '';
           document.getElementById('placeName').value = item.place_name || '';
+          document.getElementById('areaName').value = item.area_name || '';
           document.getElementById('lat').value = item.lat != null ? item.lat : '';
           document.getElementById('lon').value = item.lon != null ? item.lon : '';
           document.getElementById('cdnName').scrollIntoView({behavior:'smooth', block:'center'});
@@ -905,6 +927,7 @@ INGEST_TOKEN=...</pre>
         cdn_name: document.getElementById('cdnName').value.trim(),
         ip: document.getElementById('cdnIp').value.trim() || null,
         place_name: document.getElementById('placeName').value.trim() || null,
+        area_name: document.getElementById('areaName').value.trim() || null,
         lat: document.getElementById('lat').value ? Number(document.getElementById('lat').value) : null,
         lon: document.getElementById('lon').value ? Number(document.getElementById('lon').value) : null,
       };
@@ -1163,8 +1186,6 @@ def history_page(token: Optional[str] = Cookie(None)):
 def ingest(metric: MetricIn, x_agent_token: Optional[str] = Header(None)):
     if x_agent_token != TOKEN:
         raise HTTPException(status_code=401, detail='invalid token')
-    if metric.cdn_name not in ALLOWED_CDNS:
-        raise HTTPException(status_code=400, detail=f'cdn_name must be cdn1 or cdn2')
     if metric.target_port != 443:
         raise HTTPException(status_code=400, detail='target_port must be 443')
     ts = metric.ts or int(time.time())
@@ -1193,15 +1214,13 @@ def latest():
 
 @app.get('/api/history')
 def history(cdn_name: str, range: str = '24h'):
-    if cdn_name not in ALLOWED_CDNS:
-        raise HTTPException(status_code=400, detail='cdn_name must be cdn1 or cdn2')
     spec, points = query_history(cdn_name, range)
     return {'cdn_name': cdn_name, 'range': range, 'label': spec['label'], 'stepLabel': spec['stepLabel'], 'points': points}
 
 @app.get('/api/series')
 def series(range: str = '24h'):
     spec, series_data = query_all_series(range)
-    for cdn_name in ALLOWED_CDNS:
+    for cdn_name in get_configured_cdns():
         series_data.setdefault(cdn_name, [])
     return {'range': range, 'label': spec['label'], 'stepLabel': spec['stepLabel'], 'series': series_data}
 
@@ -1223,18 +1242,23 @@ def upsert_map_config(item: MapConfigIn, token: Optional[str] = Cookie(None)):
     username = username_from_token(token)
     if not username:
         raise HTTPException(status_code=401, detail='Not authenticated')
-    if item.cdn_name not in ALLOWED_CDNS:
-        raise HTTPException(status_code=400, detail='cdn_name must be cdn1 or cdn2')
     raw = load_map_config_raw()
+    entry: dict = {}
+    if item.place_name:
+        entry['place_name'] = item.place_name
+    if item.area_name:
+        entry['area_name'] = item.area_name
     if item.lat is not None and item.lon is not None:
-        entry: dict = {'place_name': item.place_name or '', 'lat': item.lat, 'lon': item.lon}
-        if item.ip:
-            entry['ip'] = item.ip
-        raw[item.cdn_name] = entry
-    elif item.ip:
-        raw[item.cdn_name] = {'place_name': item.place_name or '', 'ip': item.ip}
-    else:
-        raw[item.cdn_name] = item.place_name or ''
+        entry['lat'] = item.lat
+        entry['lon'] = item.lon
+    if item.ip:
+        entry['ip'] = item.ip
+
+    if not entry:
+        entry = ''
+    elif isinstance(entry, dict) and set(entry.keys()) == {'place_name'}:
+        entry = entry['place_name']
+    raw[item.cdn_name] = entry
     save_map_config_raw(raw)
     logger.info('Map config upserted by %s for %s', username, item.cdn_name)
     return {'status': 'ok', 'cdn_name': item.cdn_name}
