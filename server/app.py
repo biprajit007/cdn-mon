@@ -46,30 +46,61 @@ AUTO_BOOTSTRAP_ADMIN = os.getenv('AUTO_BOOTSTRAP_ADMIN', 'true').lower() in ('1'
 MAP_CONFIG_FILE = os.getenv('MAP_CONFIG_FILE', '/app/data/cdn_map.json')
 
 BANGLADESH_PLACES = {
-    'dhaka': {'label': 'Dhaka', 'lat': 23.8103, 'lon': 90.4125},
-    'chattogram': {'label': 'Chattogram', 'lat': 22.3569, 'lon': 91.7832},
-    'chittagong': {'label': 'Chattogram', 'lat': 22.3569, 'lon': 91.7832},
-    'khulna': {'label': 'Khulna', 'lat': 22.8456, 'lon': 89.5403},
-    'rajshahi': {'label': 'Rajshahi', 'lat': 24.3745, 'lon': 88.6042},
-    'sylhet': {'label': 'Sylhet', 'lat': 24.8949, 'lon': 91.8687},
-    'barishal': {'label': 'Barishal', 'lat': 22.7010, 'lon': 90.3535},
-    'barisal': {'label': 'Barishal', 'lat': 22.7010, 'lon': 90.3535},
-    'rangpur': {'label': 'Rangpur', 'lat': 25.7439, 'lon': 89.2752},
-    'mymensingh': {'label': 'Mymensingh', 'lat': 24.7471, 'lon': 90.4203},
-    'coxsbazar': {'label': 'Cox’s Bazar', 'lat': 21.4272, 'lon': 92.0058},
-    'cox\'s bazar': {'label': 'Cox’s Bazar', 'lat': 21.4272, 'lon': 92.0058},
-    'cumilla': {'label': 'Cumilla', 'lat': 23.4607, 'lon': 91.1809},
-    'comilla': {'label': 'Cumilla', 'lat': 23.4607, 'lon': 91.1809},
-    'bogura': {'label': 'Bogura', 'lat': 24.8465, 'lon': 89.3773},
-    'jashore': {'label': 'Jashore', 'lat': 23.1664, 'lon': 89.2080},
-    'jessore': {'label': 'Jashore', 'lat': 23.1664, 'lon': 89.2080},
-    'narayanganj': {'label': 'Narayanganj', 'lat': 23.6238, 'lon': 90.5000},
-    'gazipur': {'label': 'Gazipur', 'lat': 23.9946, 'lon': 90.4203},
-    'feni': {'label': 'Feni', 'lat': 23.0236, 'lon': 91.3849},
-    'noakhali': {'label': 'Noakhali', 'lat': 22.8696, 'lon': 91.0995},
-    'pabna': {'label': 'Pabna', 'lat': 24.0065, 'lon': 89.2372},
-    'dinajpur': {'label': 'Dinajpur', 'lat': 25.6269, 'lon': 88.6378},
+    'dhaka':       {'label': 'Dhaka',        'lat': 23.8103, 'lon': 90.4125, 'landmark': 'Jatiyo Sangsad Bhaban', 'emoji': '🏛️'},
+    'chattogram':  {'label': 'Chattogram',   'lat': 22.3569, 'lon': 91.7832, 'landmark': 'Patenga Sea Beach',     'emoji': '🌊'},
+    'chittagong':  {'label': 'Chattogram',   'lat': 22.3569, 'lon': 91.7832, 'landmark': 'Patenga Sea Beach',     'emoji': '🌊'},
+    'khulna':      {'label': 'Khulna',       'lat': 22.8456, 'lon': 89.5403, 'landmark': 'Sundarbans',            'emoji': '🌿'},
+    'rajshahi':    {'label': 'Rajshahi',     'lat': 24.3745, 'lon': 88.6042, 'landmark': 'Puthia Temple Complex', 'emoji': '🛕'},
+    'sylhet':      {'label': 'Sylhet',       'lat': 24.8949, 'lon': 91.8687, 'landmark': 'Ratargul Swamp Forest', 'emoji': '🌳'},
+    'barishal':    {'label': 'Barishal',     'lat': 22.7010, 'lon': 90.3535, 'landmark': 'Durga Sagar Lake',      'emoji': '🏞️'},
+    'barisal':     {'label': 'Barishal',     'lat': 22.7010, 'lon': 90.3535, 'landmark': 'Durga Sagar Lake',      'emoji': '🏞️'},
+    'rangpur':     {'label': 'Rangpur',      'lat': 25.7439, 'lon': 89.2752, 'landmark': 'Tajhat Palace',         'emoji': '🏰'},
+    'mymensingh':  {'label': 'Mymensingh',   'lat': 24.7471, 'lon': 90.4203, 'landmark': 'Zamindar Palace',       'emoji': '🏯'},
+    'coxsbazar':       {'label': 'Cox’s Bazar', 'lat': 21.4272, 'lon': 92.0058, 'landmark': "World's Longest Beach", 'emoji': '🏖️'},
+    "cox's bazar":     {'label': 'Cox’s Bazar', 'lat': 21.4272, 'lon': 92.0058, 'landmark': "World's Longest Beach", 'emoji': '🏖️'},
+    'cumilla':     {'label': 'Cumilla',      'lat': 23.4607, 'lon': 91.1809, 'landmark': 'Mainamati Ruins',       'emoji': '🏺'},
+    'comilla':     {'label': 'Cumilla',      'lat': 23.4607, 'lon': 91.1809, 'landmark': 'Mainamati Ruins',       'emoji': '🏺'},
+    'bogura':      {'label': 'Bogura',       'lat': 24.8465, 'lon': 89.3773, 'landmark': 'Mahasthangarh',         'emoji': '🗿'},
+    'jashore':     {'label': 'Jashore',      'lat': 23.1664, 'lon': 89.2080, 'landmark': 'Michael Madhusudan Birthplace', 'emoji': '🏡'},
+    'jessore':     {'label': 'Jashore',      'lat': 23.1664, 'lon': 89.2080, 'landmark': 'Michael Madhusudan Birthplace', 'emoji': '🏡'},
+    'narayanganj': {'label': 'Narayanganj',  'lat': 23.6238, 'lon': 90.5000, 'landmark': 'Panam Nagar',           'emoji': '🏘️'},
+    'gazipur':     {'label': 'Gazipur',      'lat': 23.9946, 'lon': 90.4203, 'landmark': 'Bhawal National Park',  'emoji': '🌲'},
+    'feni':        {'label': 'Feni',         'lat': 23.0236, 'lon': 91.3849, 'landmark': 'Shalban Vihara',        'emoji': '🕌'},
+    'noakhali':    {'label': 'Noakhali',     'lat': 22.8696, 'lon': 91.0995, 'landmark': 'Gandhi Ashram',         'emoji': '🕊️'},
+    'pabna':       {'label': 'Pabna',        'lat': 24.0065, 'lon': 89.2372, 'landmark': 'Hardinge Bridge',       'emoji': '🌉'},
+    'dinajpur':    {'label': 'Dinajpur',     'lat': 25.6269, 'lon': 88.6378, 'landmark': 'Kantajew Temple',       'emoji': '🛕'},
 }
+
+WORLD_PLACES = {
+    'london':        {'label': 'London',        'lat': 51.5074,  'lon': -0.1278,   'landmark': 'Big Ben',                'emoji': '🕐'},
+    'new york':      {'label': 'New York',       'lat': 40.7128,  'lon': -74.0060,  'landmark': 'Statue of Liberty',      'emoji': '🗽'},
+    'newyork':       {'label': 'New York',       'lat': 40.7128,  'lon': -74.0060,  'landmark': 'Statue of Liberty',      'emoji': '🗽'},
+    'nyc':           {'label': 'New York',       'lat': 40.7128,  'lon': -74.0060,  'landmark': 'Statue of Liberty',      'emoji': '🗽'},
+    'frankfurt':     {'label': 'Frankfurt',      'lat': 50.1109,  'lon': 8.6821,    'landmark': 'Römer (Old Town Hall)',   'emoji': '🏛️'},
+    'sydney':        {'label': 'Sydney',         'lat': -33.8688, 'lon': 151.2093,  'landmark': 'Sydney Opera House',     'emoji': '🎭'},
+    'singapore':     {'label': 'Singapore',      'lat': 1.3521,   'lon': 103.8198,  'landmark': 'Marina Bay Sands',       'emoji': '🌆'},
+    'tokyo':         {'label': 'Tokyo',          'lat': 35.6762,  'lon': 139.6503,  'landmark': 'Tokyo Tower',            'emoji': '🗼'},
+    'paris':         {'label': 'Paris',          'lat': 48.8566,  'lon': 2.3522,    'landmark': 'Eiffel Tower',           'emoji': '🗼'},
+    'dubai':         {'label': 'Dubai',          'lat': 25.2048,  'lon': 55.2708,   'landmark': 'Burj Khalifa',           'emoji': '🏙️'},
+    'amsterdam':     {'label': 'Amsterdam',      'lat': 52.3676,  'lon': 4.9041,    'landmark': 'Rijksmuseum',            'emoji': '🏛️'},
+    'mumbai':        {'label': 'Mumbai',         'lat': 19.0760,  'lon': 72.8777,   'landmark': 'Gateway of India',       'emoji': '🚪'},
+    'bangalore':     {'label': 'Bangalore',      'lat': 12.9716,  'lon': 77.5946,   'landmark': 'Lalbagh Botanical Garden','emoji': '🌿'},
+    'los angeles':   {'label': 'Los Angeles',    'lat': 34.0522,  'lon': -118.2437, 'landmark': 'Hollywood Sign',         'emoji': '🎬'},
+    'chicago':       {'label': 'Chicago',        'lat': 41.8781,  'lon': -87.6298,  'landmark': 'The Bean (Cloud Gate)',  'emoji': '🫘'},
+    'toronto':       {'label': 'Toronto',        'lat': 43.6532,  'lon': -79.3832,  'landmark': 'CN Tower',               'emoji': '🗼'},
+    'berlin':        {'label': 'Berlin',         'lat': 52.5200,  'lon': 13.4050,   'landmark': 'Brandenburg Gate',       'emoji': '🚪'},
+    'seoul':         {'label': 'Seoul',          'lat': 37.5665,  'lon': 126.9780,  'landmark': 'Gyeongbokgung Palace',   'emoji': '🏯'},
+    'hong kong':     {'label': 'Hong Kong',      'lat': 22.3193,  'lon': 114.1694,  'landmark': 'Victoria Peak',          'emoji': '🌆'},
+    'hongkong':      {'label': 'Hong Kong',      'lat': 22.3193,  'lon': 114.1694,  'landmark': 'Victoria Peak',          'emoji': '🌆'},
+    'moscow':        {'label': 'Moscow',         'lat': 55.7558,  'lon': 37.6173,   'landmark': 'Saint Basil\'s Cathedral','emoji': '🕌'},
+    'sao paulo':     {'label': 'São Paulo',      'lat': -23.5505, 'lon': -46.6333,  'landmark': 'Ibirapuera Park',        'emoji': '🌳'},
+    'johannesburg':  {'label': 'Johannesburg',   'lat': -26.2041, 'lon': 28.0473,   'landmark': 'Apartheid Museum',       'emoji': '🏛️'},
+    'istanbul':      {'label': 'Istanbul',       'lat': 41.0082,  'lon': 28.9784,   'landmark': 'Hagia Sophia',           'emoji': '🕌'},
+}
+
+ALL_PLACES = {**BANGLADESH_PLACES, **WORLD_PLACES}
+
+ALLOWED_CDNS = {'cdn1', 'cdn2'}
 
 pwd_context = CryptContext(schemes=['argon2'], deprecated='auto')
 app = FastAPI(title='CDN Monitoring System')
@@ -92,6 +123,7 @@ class MapConfigIn(BaseModel):
     place_name: Optional[str] = None
     lat: Optional[float] = None
     lon: Optional[float] = None
+    ip: Optional[str] = None
 
 def verify_password(plain, hashed):
     return pwd_context.verify(plain, hashed)
@@ -164,7 +196,7 @@ def query_history(cdn_name: str, range_key: str):
     spec = range_spec(range_key)
     rows = conn.execute(
         'SELECT (ts / ?) * ? AS bucket_ts, ROUND(AVG(connection_count)) AS connection_count, COUNT(*) AS samples '
-        'FROM metrics WHERE cdn_name=? AND ts>=? GROUP BY bucket_ts ORDER BY bucket_ts',
+        'FROM metrics WHERE cdn_name=? AND target_port=443 AND ts>=? GROUP BY bucket_ts ORDER BY bucket_ts',
         (spec['bucket'], spec['bucket'], cdn_name, spec['since'])
     ).fetchall()
     return spec, [{'ts': r[0], 'connection_count': int(r[1] or 0), 'samples': r[2]} for r in rows]
@@ -172,8 +204,9 @@ def query_history(cdn_name: str, range_key: str):
 def query_all_series(range_key: str):
     spec = range_spec(range_key)
     rows = conn.execute(
-        'SELECT cdn_name, (ts / ?) * ? AS bucket_ts, ROUND(AVG(connection_count)) AS connection_count, COUNT(*) AS samples '
-        'FROM metrics WHERE ts>=? GROUP BY cdn_name, bucket_ts ORDER BY cdn_name, bucket_ts',
+        "SELECT cdn_name, (ts / ?) * ? AS bucket_ts, ROUND(AVG(connection_count)) AS connection_count, COUNT(*) AS samples "
+        "FROM metrics WHERE cdn_name IN ('cdn1','cdn2') AND target_port=443 AND ts>=? "
+        "GROUP BY cdn_name, bucket_ts ORDER BY cdn_name, bucket_ts",
         (spec['bucket'], spec['bucket'], spec['since'])
     ).fetchall()
     series = {}
@@ -193,24 +226,41 @@ def load_map_locations():
         place_name = None
         lat = None
         lon = None
+        ip = None
+        landmark = None
+        emoji = None
         if isinstance(spec, str):
             place_name = spec
         elif isinstance(spec, dict):
             place_name = spec.get('place_name') or spec.get('place') or spec.get('location')
             lat = spec.get('lat')
             lon = spec.get('lon')
+            ip = spec.get('ip')
 
-        lookup = BANGLADESH_PLACES.get((place_name or '').strip().lower()) if place_name else None
+        key = (place_name or '').strip().lower()
+        bd_lookup = BANGLADESH_PLACES.get(key)
+        world_lookup = WORLD_PLACES.get(key)
+        lookup = bd_lookup or world_lookup
+        is_bd = bd_lookup is not None
         if lookup:
             lat = lookup['lat'] if lat is None else lat
             lon = lookup['lon'] if lon is None else lon
             place_name = lookup['label']
+            landmark = lookup.get('landmark')
+            emoji = lookup.get('emoji')
+        elif lat is not None:
+            # manual lat/lon — check if inside BD bounds
+            is_bd = (20.5 <= lat <= 26.7) and (87.9 <= (lon or 0) <= 92.8)
 
         resolved.append({
             'cdn_name': cdn_name,
             'place_name': place_name or '',
             'lat': lat,
             'lon': lon,
+            'ip': ip or '',
+            'landmark': landmark or '',
+            'emoji': emoji or '📡',
+            'is_bd': is_bd,
             'resolved': bool(lat is not None and lon is not None),
         })
     return resolved
@@ -235,8 +285,11 @@ def get_latest_rows_by_cdn():
     rows = conn.execute("""
     SELECT ts, cdn_name, host, target_port, connection_count
     FROM metrics
-    WHERE (cdn_name, ts) IN (
-      SELECT cdn_name, MAX(ts) FROM metrics GROUP BY cdn_name
+    WHERE cdn_name IN ('cdn1','cdn2') AND target_port = 443
+    AND (cdn_name, ts) IN (
+      SELECT cdn_name, MAX(ts) FROM metrics
+      WHERE cdn_name IN ('cdn1','cdn2') AND target_port = 443
+      GROUP BY cdn_name
     )
     ORDER BY cdn_name
     """).fetchall()
@@ -247,28 +300,16 @@ def get_latest_rows_by_cdn():
 
 def merge_latest_with_config(default_count=0):
     latest_rows = get_latest_rows_by_cdn()
-    configured = load_map_locations()
+    configured = [item for item in load_map_locations() if item['cdn_name'] in ALLOWED_CDNS]
     items = []
-    seen = set()
     for item in configured:
         row = latest_rows.get(item['cdn_name'])
         merged = {**item}
         if row:
             merged.update(row)
         else:
-            merged.update({'ts': None, 'host': '', 'target_port': None, 'connection_count': default_count})
+            merged.update({'ts': None, 'host': '', 'target_port': 443, 'connection_count': default_count})
         items.append(merged)
-        seen.add(item['cdn_name'])
-    for cdn_name, row in latest_rows.items():
-        if cdn_name not in seen:
-            items.append({
-                'cdn_name': cdn_name,
-                'place_name': '',
-                'lat': None,
-                'lon': None,
-                'resolved': False,
-                **row,
-            })
     return items
 
 @app.get('/login', response_class=HTMLResponse)
@@ -329,10 +370,14 @@ def dashboard(token: Optional[str] = Cookie(None)):
     .legend{{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}}
     .legend button{{background:#081018;color:#d8f7ff;border:1px solid #1f3b4d;padding:8px 10px;border-radius:999px;cursor:pointer}}
     .legend button.off{{opacity:.45;text-decoration:line-through}}
-    .chart{{width:100%;height:320px;display:block;background:#081018;border:1px solid #1f3b4d;border-radius:10px}}
+    .chart-wrap{{width:100%;background:#081018;border:1px solid #1f3b4d;border-radius:10px;padding:12px;box-sizing:border-box}}
     table{{border-collapse:collapse;width:100%}}
-    td,th{{border:1px solid #1f3b4d;padding:8px;text-align:left}}
+    td,th{{border:1px solid #1f3b4d;padding:8px 10px;text-align:left;font-size:13px}}
+    th{{background:#0d1e2e;color:#7fe8ff;font-weight:600}}
+    tr:hover td{{background:#0d1e2e}}
     .empty{{padding:16px 0;opacity:.75}}
+    .dot-live{{display:inline-block;width:8px;height:8px;border-radius:50%;background:#27d36b;animation:dotpulse 1.4s infinite;margin-right:5px;vertical-align:middle}}
+    @keyframes dotpulse{{0%{{box-shadow:0 0 0 0 rgba(39,211,107,.7)}}70%{{box-shadow:0 0 0 6px rgba(39,211,107,0)}}100%{{box-shadow:0 0 0 0 rgba(39,211,107,0)}}}}
     </style>
     </head><body><div class='wrap'>
     <div class='nav'>
@@ -350,13 +395,19 @@ def dashboard(token: Optional[str] = Cookie(None)):
     </div>
 
     <div class='cards' id='cards'></div>
+    <div style='background:#0a1520;border:1px solid #27d36b;border-radius:12px;padding:16px 24px;margin-bottom:14px;display:flex;align-items:center;gap:20px'>
+      <div>
+        <div style='font-size:12px;opacity:.7;margin-bottom:4px'>TOTAL CONNECTIONS (ALL CDNs)</div>
+        <div id='totalCount' style='font-size:48px;font-weight:700;color:#27d36b;line-height:1'>—</div>
+      </div>
+      <div style='width:1px;background:#1f3b4d;align-self:stretch'></div>
+      <div id='perCdnCounts' style='display:flex;gap:16px;flex-wrap:wrap'></div>
+    </div>
 
     <div class='panel'>
-      <h2>All CDN graph</h2>
-      <div class='muted'>Default view: last 24 hours, all CDNs together</div>
-      <div id='homeMeta' class='muted' style='margin-top:6px'></div>
-      <svg id='homeChart' class='chart' viewBox='0 0 1200 320' preserveAspectRatio='none'></svg>
-      <div id='legend' class='legend'></div>
+      <h2>Connection Graph <span id='homeMeta' class='muted' style='font-size:13px;font-weight:400;margin-left:8px'></span></h2>
+      <div class='chart-wrap' style='height:360px'><canvas id='homeChart'></canvas></div>
+      <div id='legend' class='legend' style='margin-top:10px'></div>
     </div>
 
     <div class='panel'>
@@ -364,15 +415,18 @@ def dashboard(token: Optional[str] = Cookie(None)):
       <div id='latestTable'></div>
     </div>
 
-    </div><script>
+    </div>
+    <script src='https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js'></script>
+    <script>
     const state = {{ hidden: {{}} }};
     const palette = ['#7fe8ff','#ff8f70','#a4ff70','#d370ff','#ffd670','#70ffd8','#ffa8d8','#9cb2ff'];
+    let homeChart = null;
 
-    function esc(text){{ const div=document.createElement('div'); div.textContent=String(text ?? ''); return div.textContent; }}
+    function esc(text){{ const div=document.createElement('div'); div.textContent=String(text ?? ''); return div.innerHTML; }}
 
     function setCard(container, title, value, sub=''){{
       const card=document.createElement('div'); card.className='card';
-      card.innerHTML = '<div class="label">'+esc(title)+'</div><div class="value">'+esc(value)+'</div>' + (sub ? '<div class="muted" style="margin-top:6px">'+esc(sub)+'</div>' : '');
+      card.innerHTML = '<div class="label">'+esc(title)+'</div><div class="value">'+esc(value)+'</div>' + (sub ? '<div class="muted" style="margin-top:6px;font-size:12px">'+esc(sub)+'</div>' : '');
       container.appendChild(card);
     }}
 
@@ -380,13 +434,13 @@ def dashboard(token: Optional[str] = Cookie(None)):
       const cards=document.getElementById('cards');
       cards.replaceChildren();
       const total = items.reduce((sum, item) => sum + Number(item.connection_count || 0), 0);
-      setCard(cards, 'Total CDNs', items.length, 'current active sources');
-      setCard(cards, 'Total connections', total, 'live latest counts');
+      setCard(cards, 'Total CDNs', items.length, 'configured nodes');
+      setCard(cards, 'Total Connections', total.toLocaleString(), 'across all CDNs');
       if(items.length){{
-        const hottest = [...items].sort((a,b)=>Number(b.connection_count||0)-Number(a.connection_count||0))[0];
-        setCard(cards, 'Highest count', hottest.connection_count, hottest.cdn_name + ' · ' + (hottest.host || 'waiting for data'));
+        const top = [...items].sort((a,b)=>Number(b.connection_count||0)-Number(a.connection_count||0))[0];
+        setCard(cards, 'Busiest CDN', top.cdn_name, top.connection_count + ' connections');
       }}
-      items.forEach(item => setCard(cards, item.cdn_name, item.connection_count, item.ts ? ((item.host || 'live') + ' : ' + String(item.target_port ?? '--')) : 'waiting for agent'));
+      items.forEach(item => setCard(cards, item.cdn_name, Number(item.connection_count||0).toLocaleString(), item.place_name || item.host || '—'));
     }}
 
     function renderLatestTable(items){{
@@ -394,12 +448,18 @@ def dashboard(token: Optional[str] = Cookie(None)):
       if(!items.length){{ target.innerHTML = '<div class="empty">No data yet.</div>'; return; }}
       const table=document.createElement('table');
       const head=document.createElement('tr');
-      ['CDN','Host','Port','Connections','Timestamp'].forEach(title => {{ const th=document.createElement('th'); th.textContent=title; head.appendChild(th); }});
+      ['CDN','IP','Connections','Last Seen'].forEach(t => {{ const th=document.createElement('th'); th.textContent=t; head.appendChild(th); }});
       table.appendChild(head);
       items.forEach(item => {{
         const tr=document.createElement('tr');
-        const tsText = item.ts ? new Date(item.ts*1000).toLocaleString() : 'waiting for agent';
-        [item.cdn_name, item.host || 'waiting for agent', String(item.target_port ?? '--'), String(item.connection_count ?? 0), tsText].forEach(value => {{ const td=document.createElement('td'); td.textContent=value; tr.appendChild(td); }});
+        const tsText = item.ts ? new Date(item.ts*1000).toLocaleString() : '—';
+        const cells = [
+          '<span class="dot-live"></span>' + esc(item.cdn_name),
+          esc(item.ip || '—'),
+          '<b>' + Number(item.connection_count??0).toLocaleString() + '</b>',
+          esc(tsText)
+        ];
+        cells.forEach(html => {{ const td=document.createElement('td'); td.innerHTML=html; tr.appendChild(td); }});
         table.appendChild(tr);
       }});
       target.replaceChildren(table);
@@ -408,99 +468,100 @@ def dashboard(token: Optional[str] = Cookie(None)):
     function renderLegend(series){{
       const legend=document.getElementById('legend');
       legend.replaceChildren();
-      const names=Object.keys(series).sort();
-      names.forEach((name, idx) => {{
+      Object.keys(series).sort().forEach((name, idx) => {{
         const btn=document.createElement('button');
-        btn.textContent=name;
-        btn.style.borderColor=palette[idx % palette.length];
+        btn.innerHTML = '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+palette[idx%palette.length]+';margin-right:5px;vertical-align:middle"></span>' + esc(name);
         if(state.hidden[name]) btn.classList.add('off');
         btn.onclick = () => {{ state.hidden[name] = !state.hidden[name]; loadGraphs(); }};
         legend.appendChild(btn);
       }});
     }}
 
-    function wavePath(points, xAt, yAt){{
-      if(!points.length) return '';
-      let d='M ' + xAt(points[0].ts).toFixed(1) + ' ' + yAt(points[0].connection_count).toFixed(1);
-      for(let i=1;i<points.length;i++){{
-        const prev=points[i-1], cur=points[i];
-        const x1=xAt(prev.ts), y1=yAt(prev.connection_count), x2=xAt(cur.ts), y2=yAt(cur.connection_count);
-        const spread=(x2-x1) * 0.45;
-        d += ' C ' + (x1 + spread).toFixed(1) + ' ' + y1.toFixed(1) + ', ' + (x2 - spread).toFixed(1) + ' ' + y2.toFixed(1) + ', ' + x2.toFixed(1) + ' ' + y2.toFixed(1);
-      }}
-      return d;
-    }}
-
     function renderHomeChart(series){{
-      const svg=document.getElementById('homeChart');
-      svg.replaceChildren();
-      const activeNames = Object.keys(series).filter(name => !state.hidden[name] && series[name] && series[name].length);
-      const allTimes = [...new Set(activeNames.flatMap(name => series[name].map(p => p.ts)))].sort((a,b)=>a-b);
-      const w=1200, h=320, padL=50, padR=18, padT=18, padB=34;
-      if(!allTimes.length){{
-        const empty=document.createElementNS('http://www.w3.org/2000/svg','text');
-        empty.setAttribute('x','20'); empty.setAttribute('y','30'); empty.setAttribute('fill','#d8f7ff'); empty.textContent='No graph data yet.';
-        svg.appendChild(empty); return;
-      }}
-      const xAt = ts => padL + (allTimes.length === 1 ? 0 : ((allTimes.indexOf(ts) / (allTimes.length - 1)) * (w - padL - padR)));
-      const maxValue = Math.max(1, ...activeNames.flatMap(name => series[name].map(p => Number(p.connection_count || 0))));
-      const yAt = value => h - padB - ((Number(value || 0) / maxValue) * (h - padT - padB));
-      for(let i=0;i<5;i++){{
-        const y = padT + i * ((h - padT - padB)/4);
-        const line=document.createElementNS('http://www.w3.org/2000/svg','line');
-        line.setAttribute('x1', padL); line.setAttribute('x2', w-padR); line.setAttribute('y1', y); line.setAttribute('y2', y);
-        line.setAttribute('stroke', '#1f3b4d'); line.setAttribute('stroke-width', '1');
-        svg.appendChild(line);
-      }}
-      activeNames.forEach((name, idx) => {{
-        const points = series[name] || [];
-        const pathD = wavePath(points, xAt, yAt);
-        if(!pathD) return;
-        const fill=document.createElementNS('http://www.w3.org/2000/svg','path');
-        fill.setAttribute('d', pathD + ' L ' + xAt(points[points.length-1].ts).toFixed(1) + ' ' + (h-padB) + ' L ' + xAt(points[0].ts).toFixed(1) + ' ' + (h-padB) + ' Z');
-        fill.setAttribute('fill', 'rgba(127,232,255,.04)');
-        fill.setAttribute('stroke', 'none');
-        svg.appendChild(fill);
-        const path=document.createElementNS('http://www.w3.org/2000/svg','path');
-        path.setAttribute('d', pathD);
-        path.setAttribute('fill', 'none');
-        path.setAttribute('stroke', palette[idx % palette.length]);
-        path.setAttribute('stroke-width', '3');
-        path.setAttribute('stroke-linecap', 'round');
-        path.setAttribute('stroke-linejoin', 'round');
-        svg.appendChild(path);
-        points.forEach(point => {{
-          const circle=document.createElementNS('http://www.w3.org/2000/svg','circle');
-          circle.setAttribute('cx', xAt(point.ts));
-          circle.setAttribute('cy', yAt(point.connection_count));
-          circle.setAttribute('r', '4');
-          circle.setAttribute('fill', palette[idx % palette.length]);
-          const title=document.createElementNS('http://www.w3.org/2000/svg','title');
-          title.textContent = name + ' · ' + point.connection_count + ' @ ' + new Date(point.ts*1000).toLocaleString();
-          circle.appendChild(title);
-          svg.appendChild(circle);
-        }});
+      const canvas = document.getElementById('homeChart');
+      const names = Object.keys(series).filter(n => !state.hidden[n] && series[n]?.length);
+      const allTs = [...new Set(names.flatMap(n => series[n].map(p => p.ts)))].sort((a,b)=>a-b);
+      const labels = allTs.map(ts => {{
+        const d = new Date(ts*1000);
+        return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
       }});
-      const axis=document.createElementNS('http://www.w3.org/2000/svg','line');
-      axis.setAttribute('x1', padL); axis.setAttribute('x2', w-padR); axis.setAttribute('y1', h-padB); axis.setAttribute('y2', h-padB);
-      axis.setAttribute('stroke', '#7fe8ff'); axis.setAttribute('stroke-width', '1');
-      svg.appendChild(axis);
-      const maxLabel=document.createElementNS('http://www.w3.org/2000/svg','text');
-      maxLabel.setAttribute('x', '12'); maxLabel.setAttribute('y', '22'); maxLabel.setAttribute('fill', '#d8f7ff'); maxLabel.setAttribute('font-size', '12');
-      maxLabel.textContent = 'max ' + maxValue;
-      svg.appendChild(maxLabel);
+      const datasets = names.map((name, idx) => {{
+        const color = palette[idx % palette.length];
+        const tsMap = Object.fromEntries((series[name]||[]).map(p=>[p.ts, p.connection_count]));
+        const data = allTs.map(ts => tsMap[ts] ?? null);
+        return {{
+          label: name,
+          data,
+          borderColor: color,
+          backgroundColor: color.replace(')', ', 0.08)').replace('rgb','rgba').replace('#', 'rgba(').replace(/rgba\(([0-9a-f]{{2}})([0-9a-f]{{2}})([0-9a-f]{{2}})/i, (_,r,g,b)=>`rgba(${{parseInt(r,16)}},${{parseInt(g,16)}},${{parseInt(b,16)}}`),
+          borderWidth: 2.5,
+          pointRadius: 3,
+          pointHoverRadius: 6,
+          tension: 0.4,
+          fill: true,
+          spanGaps: true,
+        }};
+      }});
+      if(homeChart){{ homeChart.destroy(); }}
+      homeChart = new Chart(canvas, {{
+        type: 'line',
+        data: {{ labels, datasets }},
+        options: {{
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {{ mode: 'index', intersect: false }},
+          plugins: {{
+            legend: {{ display: false }},
+            tooltip: {{
+              backgroundColor: 'rgba(10,21,32,0.95)',
+              borderColor: '#1f3b4d',
+              borderWidth: 1,
+              titleColor: '#7fe8ff',
+              bodyColor: '#d8f7ff',
+              padding: 10,
+              callbacks: {{
+                label: ctx => ' ' + ctx.dataset.label + ': ' + Number(ctx.parsed.y).toLocaleString()
+              }}
+            }}
+          }},
+          scales: {{
+            x: {{
+              grid: {{ color: '#1f3b4d' }},
+              ticks: {{ color: '#7fe8ff', maxTicksLimit: 12, font: {{ size: 11 }} }},
+              border: {{ color: '#1f3b4d' }}
+            }},
+            y: {{
+              grid: {{ color: '#1f3b4d' }},
+              ticks: {{ color: '#7fe8ff', font: {{ size: 11 }}, callback: v => Number(v).toLocaleString() }},
+              border: {{ color: '#1f3b4d' }},
+              beginAtZero: true
+            }}
+          }}
+        }}
+      }});
     }}
 
     async function loadGraphs(){{
       const [latestRes, seriesRes] = await Promise.all([fetch('/api/latest'), fetch('/api/series?range=24h')]);
       const latest = await latestRes.json();
       const series = await seriesRes.json();
-      const liveTotal = (latest.items || []).reduce((sum, item) => sum + Number(item.connection_count || 0), 0);
-      document.getElementById('homeMeta').textContent = 'Live total connections: ' + liveTotal + ' · auto-refreshes every 5 seconds';
-      renderCards(latest.items || []);
+      const items = latest.items || [];
+      const liveTotal = items.reduce((sum, item) => sum + Number(item.connection_count || 0), 0);
+      document.getElementById('totalCount').textContent = liveTotal.toLocaleString();
+      const perCdn = document.getElementById('perCdnCounts');
+      perCdn.replaceChildren();
+      items.forEach(item => {{
+        const d = document.createElement('div');
+        d.style.cssText = 'text-align:center';
+        d.innerHTML = '<div style="font-size:11px;opacity:.7">' + esc(item.cdn_name) + '</div>'
+          + '<div style="font-size:20px;font-weight:700;color:#27d36b">' + Number(item.connection_count||0).toLocaleString() + '</div>';
+        perCdn.appendChild(d);
+      }});
+      document.getElementById('homeMeta').textContent = 'Last 24h · auto-refresh 5s';
+      renderCards(items);
       renderLegend(series.series || {{}});
       renderHomeChart(series.series || {{}});
-      renderLatestTable(latest.items || []);
+      renderLatestTable(items);
     }}
 
     loadGraphs(); setInterval(loadGraphs, 5000);
@@ -515,30 +576,44 @@ def map_page(token: Optional[str] = Cookie(None)):
     <meta name='viewport' content='width=device-width, initial-scale=1'>
     <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' integrity='sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=' crossorigin=''/>
     <style>
-    body{font-family:Arial;background:#081018;color:#d8f7ff;padding:20px;margin:0}
-    .wrap{max-width:1600px;margin:0 auto}
-    .nav{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}
-    .navlinks{display:flex;gap:14px;flex-wrap:wrap}
-    .badge{display:inline-block;padding:4px 10px;border:1px solid #1f3b4d;border-radius:999px;background:#0a1520;color:#7fe8ff;text-decoration:none}
-    .layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:start}
-    #map{height:calc(100vh - 170px);min-height:760px;border:1px solid #1f3b4d;border-radius:14px;overflow:hidden;background:#050b12}
-    .panel{background:#0a1520;border:1px solid #1f3b4d;border-radius:12px;padding:16px}
-    .item{border-bottom:1px solid #1f3b4d;padding:10px 0}
-    .item:last-child{border-bottom:none}
-    .muted{opacity:.75}
-    .row{display:flex;align-items:center;gap:8px}
-    .beeper{width:16px;height:16px;border-radius:999px;background:#60707c;box-shadow:none;position:relative;flex:0 0 16px}
-    .beeper.live{background:#27d36b;box-shadow:0 0 0 0 rgba(39,211,107,.65);animation:pulse 1.4s infinite}
-    .beeper::after{content:'';position:absolute;inset:4px;border-radius:999px;background:rgba(255,255,255,.8);opacity:.25}
-    .beeper.live::after{background:#b9ffd2;opacity:.95}
-    @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(39,211,107,.55)}70%{box-shadow:0 0 0 14px rgba(39,211,107,0)}100%{box-shadow:0 0 0 0 rgba(39,211,107,0)}}
+    *{box-sizing:border-box}
+    body{font-family:Arial;background:#081018;color:#d8f7ff;margin:0;padding:16px}
+    .wrap{max-width:1700px;margin:0 auto}
+    .nav{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    .navlinks{display:flex;gap:10px;flex-wrap:wrap}
+    .badge{display:inline-block;padding:4px 10px;border:1px solid #1f3b4d;border-radius:999px;background:#0a1520;color:#7fe8ff;text-decoration:none;font-size:13px}
+    .maps-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+    @media(max-width:900px){.maps-row{grid-template-columns:1fr}}
+    .map-box{border:1px solid #1f3b4d;border-radius:12px;overflow:hidden;background:#050b12}
+    .map-title{background:#0a1520;padding:8px 14px;font-size:13px;font-weight:700;color:#7fe8ff;border-bottom:1px solid #1f3b4d}
+    .map-el{height:520px}
+    .cdn-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+    .cdn-card{background:#0a1520;border:1px solid #1f3b4d;border-radius:10px;padding:10px 12px}
+    .cdn-card.live-card{border-color:#27d36b}
+    .card-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+    .dot{width:10px;height:10px;border-radius:50%;background:#60707c;flex:0 0 10px}
+    .dot.on{background:#27d36b;animation:glow 1.4s infinite}
+    @keyframes glow{0%{box-shadow:0 0 0 0 rgba(39,211,107,.7)}70%{box-shadow:0 0 0 8px rgba(39,211,107,0)}100%{box-shadow:0 0 0 0 rgba(39,211,107,0)}}
+    .card-name{font-weight:700;font-size:14px}
+    .card-count{font-size:28px;font-weight:700;color:#27d36b;line-height:1.1}
+    .card-count.off{color:#60707c}
+    .section-title{font-size:13px;font-weight:700;color:#7fe8ff;margin:10px 0 6px}
+    .cdn-pin{display:flex;flex-direction:column;align-items:center;transform:translate(-50%,-100%)}
+    .pin-card{display:flex;align-items:center;gap:4px;background:rgba(5,11,18,.92);border:1px solid #27d36b;border-radius:5px;padding:3px 7px;white-space:nowrap}
+    .pin-dot{width:7px;height:7px;border-radius:50%;background:#27d36b;animation:glow 1.4s infinite;flex:0 0 7px}
+    .pin-dot.off{background:#60707c;animation:none}
+    .pin-name{color:#d8f7ff;font-size:10px;font-weight:700}
+    .pin-count{color:#27d36b;font-size:10px;font-weight:700;margin-left:3px}
+    .pin-count.off{color:#60707c}
+    .leaflet-popup-content-wrapper{background:#0a1520;color:#d8f7ff;border:1px solid #1f3b4d;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.7)}
+    .leaflet-popup-tip{background:#0a1520}
+    .leaflet-popup-content{margin:10px 14px;font-size:13px;line-height:1.6}
+    .popup-name{font-size:14px;font-weight:700;color:#7fe8ff;margin-bottom:3px}
+    .popup-count{font-size:20px;font-weight:700;color:#27d36b}
     </style>
     </head><body><div class='wrap'>
     <div class='nav'>
-      <div>
-        <h1 style='margin:0'>CDN MAP</h1>
-        <div class='muted' style='margin-top:6px'>Single world map for CDN monitoring, larger and easier to read.</div>
-      </div>
+      <div><h1 style='margin:0;font-size:20px'>CDN MAP</h1></div>
       <div class='navlinks'>
         <a class='badge' href='/'>Home</a>
         <a class='badge' href='/map'>CDN MAP</a>
@@ -548,73 +623,111 @@ def map_page(token: Optional[str] = Cookie(None)):
       </div>
     </div>
 
-    <div class='layout'>
-      <div id='map'></div>
-      <div class='panel'>
-        <h2 style='margin-top:0'>Configured CDNs</h2>
-        <div class='muted' style='margin-bottom:10px'>Green means live, gray means waiting.</div>
-        <div id='markerList'></div>
+    <div class='maps-row'>
+      <div class='map-box'>
+        <div class='map-title'>🌍 World CDN Map</div>
+        <div id='worldMap' class='map-el'></div>
+      </div>
+      <div class='map-box'>
+        <div class='map-title'>🇧🇩 Bangladesh CDN Map</div>
+        <div id='bdMap' class='map-el'></div>
       </div>
     </div>
+
+    <div class='section-title'>🌐 All CDN Nodes</div>
+    <div class='cdn-list' id='cdnList'></div>
+
     </div>
     <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' integrity='sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=' crossorigin=''></script>
     <script>
-    function beeperHtml(isLive){
-      return '<span class="beeper' + (isLive ? ' live' : '') + '"></span>';
+    function getCount(item){ return item.connection_count || 0; }
+    function isLive(item){ return item.ts != null && (Date.now()/1000 - item.ts) < 120; }
+
+    function pinIcon(item){
+      const cnt = getCount(item);
+      const live = isLive(item);
+      const html = '<div class="cdn-pin">'
+        + '<div class="pin-card">'
+        + '<span class="pin-dot' + (live?'':' off') + '"></span>'
+        + '<span class="pin-name">' + item.cdn_name + '</span>'
+        + '<span class="pin-count' + (live?'':' off') + '">' + cnt + '</span>'
+        + '</div></div>';
+      return L.divIcon({className:'', html, iconSize:[1,1], iconAnchor:[0,0]});
     }
 
-    function liveIcon(isLive){
-      return L.divIcon({ className: '', html: '<div class="beeper' + (isLive ? ' live' : '') + '"></div>', iconSize: [16,16], iconAnchor: [8,8] });
+    function popupHtml(item){
+      const cnt = getCount(item);
+      const live = isLive(item);
+      return '<div class="popup-name">' + item.cdn_name + '</div>'
+        + (item.place_name ? '<div>' + item.place_name + '</div>' : '')
+        + (item.ip ? '<div style="font-family:monospace;font-size:12px;color:#7fe8ff">' + item.ip + '</div>' : '')
+        + '<div class="popup-count">' + cnt + '</div>'
+        + '<div style="color:' + (live?'#27d36b':'#60707c') + ';font-size:12px">' + (live?'● Live':'○ Waiting') + '</div>';
     }
 
-    function renderMarkers(map, markers){
-      markers.forEach(item => {
-        const live = item.ts !== null && Number(item.connection_count || 0) > 0;
-        const marker = L.marker([item.lat, item.lon], { icon: liveIcon(live) }).addTo(map);
-        marker.bindPopup(`<b>${item.cdn_name}</b><br>${item.place_name}<br>Count: ${item.connection_count ?? 'n/a'}`);
+    let worldMarkers=[], bdMarkers=[], worldMap, bdMap, allItems=[];
+
+    function tileLayer(){ return L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:18,subdomains:'abcd',attribution:'&copy; OpenStreetMap &copy; CARTO'}); }
+
+    function addMarkers(map, items, store){
+      store.forEach(m=>map.removeLayer(m)); store.length=0;
+      items.filter(x=>x.resolved).forEach(item=>{
+        const m = L.marker([item.lat,item.lon],{icon:pinIcon(item)}).addTo(map);
+        m.bindPopup(popupHtml(item),{maxWidth:220});
+        store.push(m);
       });
     }
 
-    async function initMap(){
+    function refreshMarkers(){
+      addMarkers(worldMap, allItems, worldMarkers);
+      addMarkers(bdMap, allItems.filter(x=>x.is_bd), bdMarkers);
+    }
+
+    function renderList(items){
+      const list = document.getElementById('cdnList');
+      list.replaceChildren();
+      items.filter(x=>x.resolved).forEach(item=>{
+        const cnt = getCount(item);
+        const live = isLive(item);
+        const card = document.createElement('div');
+        card.className = 'cdn-card' + (live?' live-card':'');
+        card.id = 'card-' + item.cdn_name;
+        card.innerHTML = '<div class="card-top"><span class="dot' + (live?' on':'') + '"></span><span class="card-name">' + item.cdn_name + '</span></div>'
+          + '<div class="card-count' + (live?'':' off') + '" id="cnt-' + item.cdn_name + '">' + cnt + '</div>';
+        list.appendChild(card);
+      });
+    }
+
+    async function fetchData(){
       const r = await fetch('/api/map-config');
       const d = await r.json();
-      const resolved = (d.items || []).filter(x => x.resolved);
-      const unresolved = (d.items || []).filter(x => !x.resolved);
-
-      const map = L.map('map', { zoomControl: true, worldCopyJump: true }).setView([18, 0], 2);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        maxZoom: 18,
-        subdomains: 'abcd',
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-      }).addTo(map);
-      if(resolved.length){
-        const bounds = L.latLngBounds(resolved.map(item => [item.lat, item.lon]));
-        map.fitBounds(bounds.pad(0.35));
-      } else {
-        map.fitWorld();
-      }
-      renderMarkers(map, resolved);
-
-      const list = document.getElementById('markerList');
-      list.replaceChildren();
-      if(!(d.items || []).length){
-        list.innerHTML = '<div class="muted">No map config yet. Add entries in /app/data/cdn_map.json.</div>';
-      }
-      resolved.forEach(item => {
-        const live = item.ts !== null && Number(item.connection_count || 0) > 0;
-        const row = document.createElement('div');
-        row.className = 'item';
-        row.innerHTML = '<div class="row">' + beeperHtml(live) + '<b>' + item.cdn_name + '</b></div><div class="muted">' + item.place_name + '</div><div class="muted">count: ' + (item.connection_count ?? 'n/a') + '</div>';
-        list.appendChild(row);
-      });
-      unresolved.forEach(item => {
-        const row = document.createElement('div');
-        row.className = 'item';
-        row.innerHTML = '<div class="row">' + beeperHtml(false) + '<b>' + item.cdn_name + '</b></div><span class="muted">Unresolved place: ' + (item.place_name || 'missing') + '</span>';
-        list.appendChild(row);
-      });
+      allItems = d.items || [];
     }
-    initMap();
+
+    async function updateCounts(){
+      await fetchData();
+      allItems.forEach(item=>{
+        const el = document.getElementById('cnt-' + item.cdn_name);
+        if(el) el.textContent = getCount(item);
+      });
+      refreshMarkers();
+    }
+
+    async function init(){
+      worldMap = L.map('worldMap',{zoomControl:true,worldCopyJump:true}).setView([20,0],2);
+      tileLayer().addTo(worldMap);
+      bdMap = L.map('bdMap',{zoomControl:true}).setView([23.8,90.4],7);
+      tileLayer().addTo(bdMap);
+
+      await fetchData();
+      const resolved = allItems.filter(x=>x.resolved);
+      if(resolved.length) worldMap.fitBounds(L.latLngBounds(resolved.map(x=>[x.lat,x.lon])).pad(0.2));
+      renderList(allItems);
+      refreshMarkers();
+
+      setInterval(async()=>{ await updateCounts(); renderList(allItems); }, 5000);
+    }
+    init();
     </script></body></html>""".replace('__USERNAME__', html.escape(username))
 
 @app.get('/management', response_class=HTMLResponse)
@@ -681,12 +794,12 @@ def management_page(token: Optional[str] = Cookie(None)):
         <div class='small'>If a CDN is listed here but has no live count, it means no agent is sending data for that CDN_NAME yet.</div>
         <form id='cdnForm'>
           <label>CDN name</label><input id='cdnName' required placeholder='cdn2'>
-          <label>Place name</label><input id='placeName' placeholder='Dhaka'>
+          <label>Place name</label><input id='placeName' required placeholder='Dhaka'>
+          <label>IP address</label><input id='cdnIp' required placeholder='152.42.176.75'>
           <label>Latitude (optional)</label><input id='lat' type='number' step='any' placeholder='23.8103'>
           <label>Longitude (optional)</label><input id='lon' type='number' step='any' placeholder='90.4125'>
           <div class='section' style='display:flex;gap:10px;flex-wrap:wrap'>
             <button type='submit'>Save CDN</button>
-            <button type='button' id='seedBtn' class='secondary'>Seed example CDNs</button>
           </div>
         </form>
 
@@ -734,7 +847,7 @@ INGEST_TOKEN=...</pre>
       }
       const table=document.createElement('table');
       const head=document.createElement('tr');
-      ['Status','CDN','Place','Lat/Lon','Live count','Actions'].forEach(title => { const th=document.createElement('th'); th.textContent=title; head.appendChild(th); });
+      ['Status','CDN','IP','Place','Lat/Lon','Live count','Actions'].forEach(title => { const th=document.createElement('th'); th.textContent=title; head.appendChild(th); });
       table.appendChild(head);
       items.forEach(item => {
         const row=document.createElement('tr');
@@ -751,12 +864,26 @@ INGEST_TOKEN=...</pre>
         row.appendChild(statusTd);
 
         const cdnTd = document.createElement('td'); cdnTd.textContent = item.cdn_name; row.appendChild(cdnTd);
+        const ipTd = document.createElement('td'); ipTd.textContent = item.ip || ''; row.appendChild(ipTd);
         const placeTd = document.createElement('td'); placeTd.textContent = item.place_name || ''; row.appendChild(placeTd);
         const latLonTd = document.createElement('td'); latLonTd.textContent = (item.lat != null && item.lon != null) ? item.lat + ', ' + item.lon : 'unresolved'; row.appendChild(latLonTd);
         const liveTd = document.createElement('td'); liveTd.textContent = live ? String(live.connection_count) : '0'; row.appendChild(liveTd);
 
         const actionsTd = document.createElement('td');
         actionsTd.className = 'actions';
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.textContent = 'Edit';
+        edit.className = 'secondary';
+        edit.onclick = () => {
+          document.getElementById('cdnName').value = item.cdn_name;
+          document.getElementById('cdnIp').value = item.ip || '';
+          document.getElementById('placeName').value = item.place_name || '';
+          document.getElementById('lat').value = item.lat != null ? item.lat : '';
+          document.getElementById('lon').value = item.lon != null ? item.lon : '';
+          document.getElementById('cdnName').scrollIntoView({behavior:'smooth', block:'center'});
+          document.getElementById('cdnName').focus();
+        };
         const del = document.createElement('button');
         del.type = 'button';
         del.textContent = 'Delete';
@@ -765,7 +892,7 @@ INGEST_TOKEN=...</pre>
           await fetch('/api/map-config/' + encodeURIComponent(item.cdn_name), { method: 'DELETE' });
           refreshConfig();
         };
-        actionsTd.appendChild(del);
+        actionsTd.append(edit, del);
         row.appendChild(actionsTd);
         table.appendChild(row);
       });
@@ -776,6 +903,7 @@ INGEST_TOKEN=...</pre>
       e.preventDefault();
       const payload = {
         cdn_name: document.getElementById('cdnName').value.trim(),
+        ip: document.getElementById('cdnIp').value.trim() || null,
         place_name: document.getElementById('placeName').value.trim() || null,
         lat: document.getElementById('lat').value ? Number(document.getElementById('lat').value) : null,
         lon: document.getElementById('lon').value ? Number(document.getElementById('lon').value) : null,
@@ -786,17 +914,6 @@ INGEST_TOKEN=...</pre>
         body: JSON.stringify(payload),
       });
       e.target.reset();
-      refreshConfig();
-    });
-
-    document.getElementById('seedBtn').addEventListener('click', async () => {
-      const seeds = [
-        {cdn_name:'cdn1', place_name:'Dhaka'},
-        {cdn_name:'cdn2', place_name:'Chattogram'},
-      ];
-      for (const item of seeds) {
-        await fetch('/api/map-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(item) });
-      }
       refreshConfig();
     });
 
@@ -1046,6 +1163,10 @@ def history_page(token: Optional[str] = Cookie(None)):
 def ingest(metric: MetricIn, x_agent_token: Optional[str] = Header(None)):
     if x_agent_token != TOKEN:
         raise HTTPException(status_code=401, detail='invalid token')
+    if metric.cdn_name not in ALLOWED_CDNS:
+        raise HTTPException(status_code=400, detail=f'cdn_name must be cdn1 or cdn2')
+    if metric.target_port != 443:
+        raise HTTPException(status_code=400, detail='target_port must be 443')
     ts = metric.ts or int(time.time())
     conn.execute(
         'INSERT INTO metrics(ts, cdn_name, host, target_port, connection_count) VALUES (?, ?, ?, ?, ?)',
@@ -1072,14 +1193,16 @@ def latest():
 
 @app.get('/api/history')
 def history(cdn_name: str, range: str = '24h'):
+    if cdn_name not in ALLOWED_CDNS:
+        raise HTTPException(status_code=400, detail='cdn_name must be cdn1 or cdn2')
     spec, points = query_history(cdn_name, range)
     return {'cdn_name': cdn_name, 'range': range, 'label': spec['label'], 'stepLabel': spec['stepLabel'], 'points': points}
 
 @app.get('/api/series')
 def series(range: str = '24h'):
     spec, series_data = query_all_series(range)
-    for item in load_map_locations():
-        series_data.setdefault(item['cdn_name'], [])
+    for cdn_name in ALLOWED_CDNS:
+        series_data.setdefault(cdn_name, [])
     return {'range': range, 'label': spec['label'], 'stepLabel': spec['stepLabel'], 'series': series_data}
 
 @app.get('/api/map-config')
@@ -1100,9 +1223,16 @@ def upsert_map_config(item: MapConfigIn, token: Optional[str] = Cookie(None)):
     username = username_from_token(token)
     if not username:
         raise HTTPException(status_code=401, detail='Not authenticated')
+    if item.cdn_name not in ALLOWED_CDNS:
+        raise HTTPException(status_code=400, detail='cdn_name must be cdn1 or cdn2')
     raw = load_map_config_raw()
     if item.lat is not None and item.lon is not None:
-        raw[item.cdn_name] = {'place_name': item.place_name or '', 'lat': item.lat, 'lon': item.lon}
+        entry: dict = {'place_name': item.place_name or '', 'lat': item.lat, 'lon': item.lon}
+        if item.ip:
+            entry['ip'] = item.ip
+        raw[item.cdn_name] = entry
+    elif item.ip:
+        raw[item.cdn_name] = {'place_name': item.place_name or '', 'ip': item.ip}
     else:
         raw[item.cdn_name] = item.place_name or ''
     save_map_config_raw(raw)
