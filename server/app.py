@@ -10,9 +10,9 @@ from passlib.context import CryptContext
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DB = os.path.join(os.path.dirname(__file__), '..', 'data', 'metrics.db')
+DB = '/app/data/metrics.db'
 os.makedirs(os.path.dirname(DB), exist_ok=True)
-conn = sqlite3.connect(DB, check_same_thread=False)
+conn = sqlite3.connect(DB, check_same_thread=False, isolation_level=None, timeout=10)
 conn.execute("""
 CREATE TABLE IF NOT EXISTS metrics (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -384,13 +384,23 @@ def get_domain_analytics(since_ts: int = None, until_ts: int = None):
         since_ts = int(time.time()) - 86400
     if not until_ts:
         until_ts = int(time.time())
+
+    excluded_domains = {'direct', 'iscreen.com.bd'}
     rows = conn.execute(
-        'SELECT domain, cdn_name, SUM(hit_count) as total_hits, COUNT(*) as records, '
-        'SUM(CASE WHEN status_code >= 400 THEN hit_count ELSE 0 END) as error_hits '
+        'SELECT domain, cdn_name, COUNT(DISTINCT referer || "|" || user_agent) as total_hits, COUNT(*) as records, '
+        'SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_hits '
         'FROM domain_hits WHERE ts BETWEEN ? AND ? GROUP BY domain ORDER BY total_hits DESC',
         (since_ts, until_ts)
     ).fetchall()
-    return [{'domain': r[0], 'cdn_name': r[1], 'total_hits': r[2] or 0, 'records': r[3], 'error_hits': r[4] or 0} for r in rows]
+
+    result = []
+    for r in rows:
+        domain = r[0]
+        if domain in excluded_domains or domain.endswith('.rockstreamer.com'):
+            continue
+        result.append({'domain': domain, 'cdn_name': r[1], 'total_hits': r[2] or 0, 'records': r[3], 'error_hits': r[4] or 0})
+
+    return result
 
 def cleanup_old_domain_hits():
     cutoff = int(time.time()) - (180 * 86400)
@@ -401,9 +411,11 @@ def cleanup_old_domain_hits():
 def get_latest_rows_by_cdn():
     cdns = get_configured_cdns()
     if not cdns:
+        logger.info('No configured CDNs found')
         return {}
     ph = ','.join('?' * len(cdns))
     cdn_list = list(cdns)
+    logger.info(f'Querying metrics for CDNs: {cdn_list}')
     rows = conn.execute(f"""
     SELECT ts, cdn_name, host, target_port, connection_count
     FROM metrics
@@ -415,6 +427,7 @@ def get_latest_rows_by_cdn():
     )
     ORDER BY cdn_name
     """, cdn_list + cdn_list).fetchall()
+    logger.info(f'Found {len(rows)} rows for latest metrics')
     return {
         r[1]: {'ts': r[0], 'cdn_name': r[1], 'host': r[2], 'target_port': r[3], 'connection_count': r[4]}
         for r in rows
@@ -1236,6 +1249,7 @@ def domains_page(token: Optional[str] = Cookie(None)):
     <div class='panel'>
       <h2>Filter & Query</h2>
       <div class='controls'>
+        <input type='text' id='domainSearch' placeholder='Search domain name...' style='flex:1;max-width:300px'>
         <label style='margin:0'>Range:
           <select id='rangeSelect'>
             <option value='24h'>Last 24 hours</option>
@@ -1302,15 +1316,17 @@ def domains_page(token: Optional[str] = Cookie(None)):
 
     function renderSummary(analytics){{
       const summary = document.getElementById('summaryCards');
-      const totalHits = analytics.reduce((s, a) => s + (a.total_hits || 0), 0);
-      const totalErrors = analytics.reduce((s, a) => s + (a.error_hits || 0), 0);
+      const searchTerm = document.getElementById('domainSearch').value.toLowerCase();
+      const filtered = analytics.filter(a => a.domain.toLowerCase().includes(searchTerm));
+      const totalHits = filtered.reduce((s, a) => s + (a.total_hits || 0), 0);
+      const totalErrors = filtered.reduce((s, a) => s + (a.error_hits || 0), 0);
       const errorRate = totalHits ? Math.round((totalErrors / totalHits) * 100) : 0;
 
       summary.replaceChildren();
 
       const cards = [
         ['Total Hits', totalHits.toLocaleString()],
-        ['Total Domains', analytics.length.toString()],
+        ['Matching Domains', filtered.length.toString()],
         ['Error Rate', errorRate + '%'],
         ['Success Rate', (100 - errorRate) + '%']
       ];
@@ -1325,7 +1341,10 @@ def domains_page(token: Optional[str] = Cookie(None)):
 
     function renderTable(analytics){{
       const table = document.getElementById('analyticsTable');
-      if(!analytics.length){{ table.innerHTML = '<div class="empty">No domain hits in selected period.</div>'; return; }}
+      const searchTerm = document.getElementById('domainSearch').value.toLowerCase();
+      const filtered = analytics.filter(a => a.domain.toLowerCase().includes(searchTerm));
+
+      if(!filtered.length){{ table.innerHTML = '<div class="empty">No domain hits match your search.</div>'; return; }}
 
       const t = document.createElement('table');
       const head = document.createElement('tr');
@@ -1336,7 +1355,7 @@ def domains_page(token: Optional[str] = Cookie(None)):
       }});
       t.appendChild(head);
 
-      analytics.forEach(a => {{
+      filtered.forEach(a => {{
         const errorRate = a.total_hits ? Math.round((a.error_hits / a.total_hits) * 100) : 0;
         const successRate = 100 - errorRate;
         const tr = document.createElement('tr');
@@ -1380,6 +1399,16 @@ def domains_page(token: Optional[str] = Cookie(None)):
 
     // Initialize with last 24 hours
     document.getElementById('rangeSelect').addEventListener('change', loadAnalytics);
+    document.getElementById('domainSearch').addEventListener('input', () => {{
+      // Re-render table and summary with current analytics data, filtered by search term
+      const res = fetch(`/api/domain-analytics?from_ts=${{state.fromTs}}&to_ts=${{state.toTs}}`);
+      res.then(r => r.json()).then(data => {{
+        const analytics = data.analytics || [];
+        renderSummary(analytics);
+        renderTable(analytics);
+        renderStatusBreakdown(analytics);
+      }});
+    }});
     loadAnalytics();
     </script></body></html>"""
 
