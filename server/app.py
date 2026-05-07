@@ -69,7 +69,7 @@ RETENTION_DAYS = int(os.getenv('RETENTION_DAYS', '30'))
 BOOTSTRAP_ADMIN_USERNAME = os.getenv('BOOTSTRAP_ADMIN_USERNAME', 'admin')
 BOOTSTRAP_ADMIN_PASSWORD = os.getenv('BOOTSTRAP_ADMIN_PASSWORD', 'cdn-monitor-2026!')
 AUTO_BOOTSTRAP_ADMIN = os.getenv('AUTO_BOOTSTRAP_ADMIN', 'true').lower() in ('1', 'true', 'yes', 'on')
-DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
+DATA_DIR = os.getenv('DATA_DIR', os.path.join(os.path.dirname(__file__), 'data'))
 MAP_CONFIG_FILE = os.getenv('MAP_CONFIG_FILE', os.path.join(DATA_DIR, 'cdn_map.json'))
 DOMAIN_CONFIG_FILE = os.getenv('DOMAIN_CONFIG_FILE', os.path.join(DATA_DIR, 'domain_config.json'))
 
