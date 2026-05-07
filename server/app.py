@@ -10,8 +10,8 @@ from passlib.context import CryptContext
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DB = '/app/data/metrics.db'
-os.makedirs('/app/data', exist_ok=True)
+DB = os.path.join(os.path.dirname(__file__), '..', 'data', 'metrics.db')
+os.makedirs(os.path.dirname(DB), exist_ok=True)
 conn = sqlite3.connect(DB, check_same_thread=False)
 conn.execute("""
 CREATE TABLE IF NOT EXISTS metrics (
@@ -69,8 +69,9 @@ RETENTION_DAYS = int(os.getenv('RETENTION_DAYS', '30'))
 BOOTSTRAP_ADMIN_USERNAME = os.getenv('BOOTSTRAP_ADMIN_USERNAME', 'admin')
 BOOTSTRAP_ADMIN_PASSWORD = os.getenv('BOOTSTRAP_ADMIN_PASSWORD', 'cdn-monitor-2026!')
 AUTO_BOOTSTRAP_ADMIN = os.getenv('AUTO_BOOTSTRAP_ADMIN', 'true').lower() in ('1', 'true', 'yes', 'on')
-MAP_CONFIG_FILE = os.getenv('MAP_CONFIG_FILE', '/app/data/cdn_map.json')
-DOMAIN_CONFIG_FILE = os.getenv('DOMAIN_CONFIG_FILE', '/app/data/domain_config.json')
+DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
+MAP_CONFIG_FILE = os.getenv('MAP_CONFIG_FILE', os.path.join(DATA_DIR, 'cdn_map.json'))
+DOMAIN_CONFIG_FILE = os.getenv('DOMAIN_CONFIG_FILE', os.path.join(DATA_DIR, 'domain_config.json'))
 
 BANGLADESH_PLACES = {
     'dhaka':       {'label': 'Dhaka',        'lat': 23.8103, 'lon': 90.4125, 'landmark': 'Jatiyo Sangsad Bhaban', 'emoji': '🏛️'},
