@@ -1,7 +1,8 @@
-from fastapi import FastAPI, Header, HTTPException, Cookie, Form
+from fastapi import FastAPI, Header, HTTPException, Cookie, Form, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
+import subprocess, urllib.request, urllib.error
 import os, sqlite3, time, html, logging, json, hashlib, math
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
@@ -26,6 +27,12 @@ BOOTSTRAP_ADMIN_PASSWORD = os.getenv('BOOTSTRAP_ADMIN_PASSWORD', 'cdn-monitor-20
 AUTO_BOOTSTRAP_ADMIN = os.getenv('AUTO_BOOTSTRAP_ADMIN', 'true').lower() in ('1', 'true', 'yes', 'on')
 DATA_DIR = os.getenv('DATA_DIR', os.path.join(os.path.dirname(__file__), 'data'))
 MAP_CONFIG_FILE = os.getenv('MAP_CONFIG_FILE', os.path.join(DATA_DIR, 'cdn_map.json'))
+K8S_CONTEXT = os.getenv('K8S_CONTEXT', '').strip()
+UPTIME_KUMA_API_URL = os.getenv('UPTIME_KUMA_API_URL', '').strip()
+UPTIME_KUMA_BEARER_TOKEN = os.getenv('UPTIME_KUMA_BEARER_TOKEN', '').strip()
+UPTIME_KUMA_BASIC_USER = os.getenv('UPTIME_KUMA_BASIC_USER', '').strip()
+UPTIME_KUMA_BASIC_PASS = os.getenv('UPTIME_KUMA_BASIC_PASS', '').strip()
+UPTIME_KUMA_HEADER = os.getenv('UPTIME_KUMA_HEADER', '').strip()
 
 BANGLADESH_PLACES = {
     'dhaka':       {'label': 'Dhaka',        'lat': 23.8103, 'lon': 90.4125, 'landmark': 'Jatiyo Sangsad Bhaban', 'emoji': '🏛️'},
@@ -229,6 +236,139 @@ def query_all_series(range_key: str):
         })
     return spec, series
 
+def auth_headers_for_uptime_kuma():
+    headers = {}
+    if UPTIME_KUMA_BEARER_TOKEN:
+        headers['Authorization'] = f'Bearer {UPTIME_KUMA_BEARER_TOKEN}'
+    elif UPTIME_KUMA_BASIC_USER or UPTIME_KUMA_BASIC_PASS:
+        raw = f"{UPTIME_KUMA_BASIC_USER}:{UPTIME_KUMA_BASIC_PASS}".encode('utf-8')
+        headers['Authorization'] = 'Basic ' + __import__('base64').b64encode(raw).decode('ascii')
+    if UPTIME_KUMA_HEADER and ':' in UPTIME_KUMA_HEADER:
+        name, value = UPTIME_KUMA_HEADER.split(':', 1)
+        headers[name.strip()] = value.strip()
+    return headers
+
+
+def normalize_health_level(value):
+    if isinstance(value, (int, float)):
+        if value <= 0:
+            return 'critical'
+        if value == 1:
+            return 'healthy'
+        return 'warning'
+    if not isinstance(value, str):
+        return 'unknown'
+    v = value.strip().lower()
+    if v in ('up', 'ok', 'healthy', 'ready', 'running', 'pass'):
+        return 'healthy'
+    if v in ('down', 'critical', 'error', 'failed', 'unhealthy', 'notready'):
+        return 'critical'
+    if v in ('warning', 'degraded', 'pending', 'maintenance'):
+        return 'warning'
+    return 'unknown'
+
+
+def load_kubernetes_snapshot():
+    if not K8S_CONTEXT:
+        return {'configured': False, 'level': 'unknown', 'summary': 'No Kubernetes context configured'}
+    try:
+        base = ['kubectl', '--context', K8S_CONTEXT] if K8S_CONTEXT else ['kubectl']
+        def run(args):
+            proc = subprocess.run(base + args, capture_output=True, text=True, timeout=12, check=True)
+            return json.loads(proc.stdout or '{}')
+        nodes = run(['get', 'nodes', '-o', 'json']).get('items', [])
+        pods = run(['get', 'pods', '-A', '-o', 'json']).get('items', [])
+        deployments = run(['get', 'deployments', '-A', '-o', 'json']).get('items', [])
+        namespaces = run(['get', 'namespaces', '-o', 'json']).get('items', [])
+        ready_nodes = sum(1 for node in nodes if any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in node.get('status', {}).get('conditions', [])))
+        problems = []
+        for pod in pods:
+            phase = pod.get('status', {}).get('phase', 'Unknown')
+            waiting_reason = None
+            for status in pod.get('status', {}).get('containerStatuses', []) or []:
+                waiting_reason = (((status.get('state') or {}).get('waiting') or {}).get('reason'))
+                if waiting_reason:
+                    break
+            if phase not in ('Running', 'Succeeded') or waiting_reason:
+                problems.append({
+                    'namespace': pod.get('metadata', {}).get('namespace', 'default'),
+                    'name': pod.get('metadata', {}).get('name', 'unknown'),
+                    'phase': phase,
+                    'reason': waiting_reason,
+                })
+        unavailable = []
+        for dep in deployments:
+            desired = dep.get('spec', {}).get('replicas', 0) or 0
+            available = dep.get('status', {}).get('availableReplicas', 0) or 0
+            if desired > available:
+                unavailable.append(dep)
+        level = 'healthy'
+        if len(nodes) != ready_nodes or unavailable:
+            level = 'warning'
+        if len(problems) > 10 or (len(nodes) - ready_nodes) > 0:
+            level = 'critical'
+        return {
+            'configured': True,
+            'level': level,
+            'context': K8S_CONTEXT,
+            'node_count': len(nodes),
+            'ready_nodes': ready_nodes,
+            'unhealthy_nodes': max(len(nodes) - ready_nodes, 0),
+            'namespace_count': len(namespaces),
+            'pod_count': len(pods),
+            'problematic_pods': len(problems),
+            'deployment_count': len(deployments),
+            'unavailable_deployments': len(unavailable),
+            'top_problems': problems[:8],
+        }
+    except Exception as e:
+        return {'configured': False, 'level': 'unknown', 'summary': f'Cluster query failed: {e}'}
+
+
+def load_uptime_kuma_snapshot():
+    if not UPTIME_KUMA_API_URL:
+        return {'configured': False, 'level': 'unknown', 'summary': 'No Uptime Kuma API configured'}
+    try:
+        req = urllib.request.Request(UPTIME_KUMA_API_URL, headers=auth_headers_for_uptime_kuma())
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            payload = json.loads(resp.read().decode('utf-8'))
+        monitors = payload.get('monitors') if isinstance(payload, dict) else None
+        if not isinstance(monitors, list):
+            monitors = (((payload or {}).get('publicGroupList') or [{}])[0].get('monitorList') if isinstance(payload, dict) else None) or payload.get('items') or []
+        heartbeat_list = payload.get('heartbeatList') if isinstance(payload, dict) else {}
+        checks = []
+        for mon in monitors:
+            mon_id = str(mon.get('id') or mon.get('monitorID') or mon.get('name'))
+            hb = (heartbeat_list or {}).get(mon_id, [None])[0] if isinstance(heartbeat_list, dict) else None
+            level = normalize_health_level((hb or {}).get('status') if isinstance(hb, dict) else mon.get('status') or mon.get('active'))
+            checks.append({
+                'name': mon.get('name') or mon.get('title') or f'Monitor {mon_id}',
+                'level': level,
+                'latency_ms': (hb or {}).get('ping') if isinstance(hb, dict) else mon.get('ping'),
+                'detail': ((hb or {}).get('msg') if isinstance(hb, dict) else None) or mon.get('msg') or mon.get('type'),
+                'target': mon.get('url') or mon.get('hostname') or mon.get('target'),
+            })
+        up = sum(1 for item in checks if item['level'] == 'healthy')
+        down = sum(1 for item in checks if item['level'] == 'critical')
+        pending = sum(1 for item in checks if item['level'] in ('warning', 'unknown'))
+        level = 'healthy'
+        if pending:
+            level = 'warning'
+        if down:
+            level = 'critical'
+        return {
+            'configured': True,
+            'level': level,
+            'monitor_count': len(checks),
+            'up_count': up,
+            'down_count': down,
+            'pending_count': pending,
+            'checks': checks[:12],
+        }
+    except Exception as e:
+        return {'configured': False, 'level': 'unknown', 'summary': f'Uptime Kuma query failed: {e}'}
+
+
 def load_map_locations():
     raw = load_map_config_raw()
 
@@ -426,6 +566,7 @@ def dashboard(token: Optional[str] = Cookie(None)):
         <a class='badge' href='/'>Home</a>
         
         <a class='badge' href='/map'>CDN MAP</a>
+        <a class='badge' href='/inframon'>Inframon</a>
         <a class='badge' href='/history'>History</a>
         <a class='badge' href='/management'>Management</a>
         <a class='badge' href='/logout'>Logout ({html.escape(username)})</a>
@@ -808,6 +949,134 @@ def dashboard(token: Optional[str] = Cookie(None)):
 
     </script></body></html>"""
 
+@app.get('/inframon', response_class=HTMLResponse)
+def inframon_page(token: Optional[str] = Cookie(None)):
+    username = username_from_token(token)
+    if not username:
+        return RedirectResponse(url='/login', status_code=303)
+    return f"""<!doctype html><html><head><title>Inframon</title>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <style>
+    body{{font-family:Arial;background:#081018;color:#d8f7ff;padding:20px;margin:0}}
+    a{{color:#7fe8ff;text-decoration:none}}
+    .wrap{{max-width:1500px;margin:0 auto}}
+    .nav{{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}}
+    .navlinks{{display:flex;gap:14px;flex-wrap:wrap}}
+    .badge{{display:inline-block;padding:4px 10px;border:1px solid #1f3b4d;border-radius:999px;background:#0a1520}}
+    .cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:18px 0}}
+    .card,.panel{{background:#0a1520;border:1px solid #1f3b4d;border-radius:12px;padding:14px}}
+    .panel{{padding:16px}}
+    .card .label{{font-size:12px;opacity:.75;margin-bottom:6px}}
+    .card .value{{font-size:28px;font-weight:700}}
+    .grid{{display:grid;grid-template-columns:1fr 1fr;gap:16px}}
+    .status-pill{{display:inline-block;padding:5px 10px;border-radius:999px;border:1px solid #1f3b4d;font-size:12px;font-weight:700}}
+    .healthy{{background:rgba(39,211,107,.12);color:#7bffad;border-color:#1f6b4a}}
+    .warning{{background:rgba(255,214,112,.12);color:#ffd670;border-color:#665425}}
+    .critical{{background:rgba(255,107,107,.12);color:#ff9a9a;border-color:#6e2a2a}}
+    .unknown{{background:rgba(90,168,255,.12);color:#8ec4ff;border-color:#244968}}
+    .status-grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}}
+    .status-grid > div{{background:#081018;border:1px solid #1f3b4d;border-radius:10px;padding:12px}}
+    .status-grid strong{{display:block;color:#8ec4ff;margin-bottom:6px}}
+    .tiny-bar{{width:100%;height:8px;border-radius:999px;background:#081018;border:1px solid #1f3b4d;overflow:hidden;margin-top:8px;display:flex}}
+    .seg{{height:100%}}
+    .seg.healthy{{background:linear-gradient(90deg,#27d36b,#7bffad)}}
+    .seg.warning{{background:linear-gradient(90deg,#ffb347,#ffd670)}}
+    .seg.critical{{background:linear-gradient(90deg,#ff6b6b,#ff9a9a)}}
+    .seg.unknown{{background:linear-gradient(90deg,#5aa8ff,#8ec4ff)}}
+    ul{{list-style:none;padding:0;margin:0;display:grid;gap:10px}}
+    li{{border:1px solid #1f3b4d;border-radius:10px;padding:10px 12px;background:#081018}}
+    li strong{{display:block;margin-bottom:4px}}
+    .muted{{opacity:.75}}
+    @media(max-width:900px){{.grid{{grid-template-columns:1fr}}}}
+    </style>
+    </head><body><div class='wrap'>
+    <div class='nav'>
+      <div>
+        <h1 style='margin:0'>Inframon</h1>
+        <div class='muted' style='margin-top:6px'>Kubernetes and service monitoring in one page.</div>
+      </div>
+      <div class='navlinks'>
+        <a class='badge' href='/'>Home</a>
+        <a class='badge' href='/map'>CDN MAP</a>
+        <a class='badge' href='/inframon'>Inframon</a>
+        <a class='badge' href='/history'>History</a>
+        <a class='badge' href='/management'>Management</a>
+        <a class='badge' href='/logout'>Logout ({html.escape(username)})</a>
+      </div>
+    </div>
+
+    <div class='cards' id='infraCards'></div>
+    <div class='grid'>
+      <div class='panel'>
+        <div style='display:flex;justify-content:space-between;align-items:center;gap:12px'><h2 style='margin:0'>Kubernetes</h2><span id='k8sLevel' class='status-pill unknown'>Unknown</span></div>
+        <div class='status-grid' id='k8sStats'></div>
+        <ul id='k8sProblems'></ul>
+      </div>
+      <div class='panel'>
+        <div style='display:flex;justify-content:space-between;align-items:center;gap:12px'><h2 style='margin:0'>Uptime Kuma Services</h2><span id='kumaLevel' class='status-pill unknown'>Unknown</span></div>
+        <div class='status-grid' id='kumaStats'></div>
+        <ul id='kumaChecks'></ul>
+      </div>
+    </div>
+
+    </div><script>
+    function esc(v){{ const d=document.createElement('div'); d.textContent=String(v ?? ''); return d.innerHTML; }}
+    function pill(level){{ return 'status-pill ' + (level || 'unknown'); }}
+    function label(level){{ return level === 'healthy' ? 'Healthy' : level === 'warning' ? 'Degraded' : level === 'critical' ? 'Critical' : 'Unknown'; }}
+    function splitBar(parts){{ const total = parts.reduce((s,p)=>s+(p.value||0),0) || 1; return '<div class="tiny-bar">' + parts.map(p => '<div class="seg '+p.tone+'" style="width:'+(((p.value||0)/total)*100)+'%"></div>').join('') + '</div>'; }}
+    function statBox(title, value, note, bar){{ return '<div><strong>'+esc(title)+'</strong><div style="font-size:22px;font-weight:700">'+esc(value)+'</div><div class="muted" style="font-size:12px;margin-top:4px">'+esc(note || '')+'</div>' + (bar || '') + '</div>'; }}
+    async function load(){{
+      const res = await fetch('/api/inframon');
+      const data = await res.json();
+      const cards = document.getElementById('infraCards'); cards.replaceChildren();
+      const k8s = data.kubernetes || {{configured:false, level:'unknown'}};
+      const kuma = data.uptime_kuma || {{configured:false, level:'unknown'}};
+      const mkCard = (labelTxt, value, note) => {{ const el=document.createElement('div'); el.className='card'; el.innerHTML='<div class="label">'+esc(labelTxt)+'</div><div class="value">'+esc(value)+'</div><div class="muted" style="margin-top:6px">'+esc(note || '')+'</div>'; cards.appendChild(el); }};
+      mkCard('Cluster Health', label(k8s.level), k8s.context || k8s.summary || 'Not configured');
+      mkCard('Node Count', k8s.node_count || 0, (k8s.ready_nodes || 0) + ' ready / ' + (k8s.unhealthy_nodes || 0) + ' unhealthy');
+      mkCard('Pod Count', k8s.pod_count || 0, (k8s.problematic_pods || 0) + ' problematic pods');
+      mkCard('Service Monitoring', kuma.monitor_count || 0, (kuma.up_count || 0) + ' up / ' + (kuma.down_count || 0) + ' down / ' + (kuma.pending_count || 0) + ' pending');
+
+      const k8sLevel=document.getElementById('k8sLevel'); k8sLevel.className=pill(k8s.level); k8sLevel.textContent=label(k8s.level);
+      const kumaLevel=document.getElementById('kumaLevel'); kumaLevel.className=pill(kuma.level); kumaLevel.textContent=label(kuma.level);
+
+      const k8sStats = document.getElementById('k8sStats');
+      k8sStats.innerHTML = ''
+        + statBox('Nodes', (k8s.ready_nodes || 0) + '/' + (k8s.node_count || 0), 'ready nodes', splitBar([{{value:k8s.ready_nodes||0,tone:'healthy'}},{{value:k8s.unhealthy_nodes||0,tone:(k8s.unhealthy_nodes||0)?'critical':'unknown'}}]))
+        + statBox('Pods', k8s.pod_count || 0, (k8s.problematic_pods || 0) + ' problematic', splitBar([{{value:Math.max((k8s.pod_count||0)-(k8s.problematic_pods||0),0),tone:'healthy'}},{{value:k8s.problematic_pods||0,tone:(k8s.problematic_pods||0)?'warning':'unknown'}}]))
+        + statBox('Namespaces', k8s.namespace_count || 0, 'cluster namespaces', '')
+        + statBox('Deployments', k8s.deployment_count || 0, (k8s.unavailable_deployments || 0) + ' unavailable', splitBar([{{value:Math.max((k8s.deployment_count||0)-(k8s.unavailable_deployments||0),0),tone:'healthy'}},{{value:k8s.unavailable_deployments||0,tone:(k8s.unavailable_deployments||0)?'warning':'unknown'}}]));
+
+      const k8sProblems = document.getElementById('k8sProblems'); k8sProblems.replaceChildren();
+      const probs = k8s.top_problems || [];
+      if(!probs.length){{ k8sProblems.innerHTML = '<li>No major pod issues detected.</li>'; }}
+      probs.forEach(item => {{ const li=document.createElement('li'); li.innerHTML='<strong>'+esc(item.namespace + '/' + item.name)+'</strong><div>'+esc(item.phase || 'Unknown')+'</div><div class="muted">'+esc(item.reason || 'No waiting reason captured')+'</div>'; k8sProblems.appendChild(li); }});
+
+      const kumaStats = document.getElementById('kumaStats');
+      kumaStats.innerHTML = ''
+        + statBox('Up', kuma.up_count || 0, 'healthy services', splitBar([{{value:kuma.up_count||0,tone:'healthy'}},{{value:Math.max((kuma.monitor_count||0)-(kuma.up_count||0),0),tone:'unknown'}}]))
+        + statBox('Down', kuma.down_count || 0, 'critical services', splitBar([{{value:kuma.down_count||0,tone:'critical'}},{{value:Math.max((kuma.monitor_count||0)-(kuma.down_count||0),0),tone:'unknown'}}]))
+        + statBox('Pending', kuma.pending_count || 0, 'degraded / unknown', splitBar([{{value:kuma.pending_count||0,tone:'warning'}},{{value:Math.max((kuma.monitor_count||0)-(kuma.pending_count||0),0),tone:'unknown'}}]))
+        + statBox('Total', kuma.monitor_count || 0, 'monitored services', splitBar([{{value:kuma.up_count||0,tone:'healthy'}},{{value:kuma.pending_count||0,tone:'warning'}},{{value:kuma.down_count||0,tone:'critical'}}]));
+
+      const kumaChecks = document.getElementById('kumaChecks'); kumaChecks.replaceChildren();
+      const checks = kuma.checks || [];
+      if(!checks.length){{ kumaChecks.innerHTML = '<li>No service data available.</li>'; }}
+      checks.forEach(item => {{ const li=document.createElement('li'); li.innerHTML='<strong>'+esc(item.name)+'</strong><div><span class="'+pill(item.level)+'">'+esc(label(item.level))+'</span></div><div class="muted" style="margin-top:6px">'+esc((item.target || 'No target') + (item.latency_ms != null ? ' · ' + item.latency_ms + ' ms' : '') + (item.detail ? ' · ' + item.detail : ''))+'</div>'; kumaChecks.appendChild(li); }});
+    }}
+    load(); setInterval(load, 30000);
+    </script></body></html>"""
+
+
+@app.get('/api/inframon')
+def api_inframon(_: str = Depends(verify_token)):
+    return {
+        'generated_at': int(time.time()),
+        'kubernetes': load_kubernetes_snapshot(),
+        'uptime_kuma': load_uptime_kuma_snapshot(),
+    }
+
+
 @app.get('/map', response_class=HTMLResponse)
 def map_page(token: Optional[str] = Cookie(None)):
     username = username_from_token(token)
@@ -862,6 +1131,7 @@ def map_page(token: Optional[str] = Cookie(None)):
         <a class='badge' href='/'>Home</a>
         
         <a class='badge' href='/map'>CDN MAP</a>
+        <a class='badge' href='/inframon'>Inframon</a>
         <a class='badge' href='/history'>History</a>
         <a class='badge' href='/management'>Management</a>
         <a class='badge' href='/logout'>Logout (__USERNAME__)</a>
@@ -1030,6 +1300,7 @@ def management_page(token: Optional[str] = Cookie(None)):
         <a class='badge' href='/'>Home</a>
         
         <a class='badge' href='/map'>CDN MAP</a>
+        <a class='badge' href='/inframon'>Inframon</a>
         <a class='badge' href='/history'>History</a>
         <a class='badge' href='/management'>Management</a>
         <a class='badge' href='/logout'>Logout (__USERNAME__)</a>
@@ -1220,6 +1491,7 @@ def history_page(token: Optional[str] = Cookie(None)):
       <div class='navlinks'>
         <a class='badge' href='/'>Home</a>
         <a class='badge' href='/map'>CDN MAP</a>
+        <a class='badge' href='/inframon'>Inframon</a>
         <a class='badge' href='/history'>History</a>
         <a class='badge' href='/management'>Management</a>
         <a class='badge' href='/logout'>Logout ({html.escape(username)})</a>
