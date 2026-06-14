@@ -111,6 +111,8 @@ class MetricIn(BaseModel):
     host: str
     target_port: int
     connection_count: int
+    tx_bps: Optional[int] = 0
+    rx_bps: Optional[int] = 0
     ts: Optional[int] = None
 
 class LegacyMetricIn(BaseModel):
@@ -455,7 +457,7 @@ def get_latest_rows_by_cdn():
     cdn_list = list(cdns)
     logger.info(f'Querying metrics for CDNs: {cdn_list}')
     rows = conn.execute(f"""
-    SELECT ts, cdn_name, host, target_port, connection_count
+    SELECT ts, cdn_name, host, target_port, connection_count, tx_bps, rx_bps
     FROM metrics
     WHERE cdn_name IN ({ph}) AND target_port = 443
     AND (cdn_name, ts) IN (
@@ -467,7 +469,7 @@ def get_latest_rows_by_cdn():
     """, cdn_list + cdn_list).fetchall()
     logger.info(f'Found {len(rows)} rows for latest metrics')
     return {
-        r[1]: {'ts': r[0], 'cdn_name': r[1], 'host': r[2], 'target_port': r[3], 'connection_count': r[4]}
+        r[1]: {'ts': r[0], 'cdn_name': r[1], 'host': r[2], 'target_port': r[3], 'connection_count': r[4], 'tx_bps': r[5] or 0, 'rx_bps': r[6] or 0}
         for r in rows
     }
 
@@ -1708,8 +1710,8 @@ def ingest(metric: MetricIn, x_agent_token: Optional[str] = Header(None)):
         raise HTTPException(status_code=400, detail='target_port must be 443')
     ts = metric.ts or int(time.time())
     conn.execute(
-        'INSERT INTO metrics(ts, cdn_name, host, target_port, connection_count) VALUES (?, ?, ?, ?, ?)',
-        (ts, metric.cdn_name, metric.host, metric.target_port, metric.connection_count)
+        'INSERT INTO metrics(ts, cdn_name, host, target_port, connection_count, tx_bps, rx_bps) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        (ts, metric.cdn_name, metric.host, metric.target_port, metric.connection_count, metric.tx_bps or 0, metric.rx_bps or 0)
     )
     conn.commit()
     return {'status': 'ok', 'ts': ts}
