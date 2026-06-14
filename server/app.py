@@ -181,6 +181,20 @@ def bootstrap_admin_if_needed():
 def startup():
     conn.execute('PRAGMA journal_mode=WAL')
     conn.execute('PRAGMA synchronous=NORMAL')
+    conn.execute('''CREATE TABLE IF NOT EXISTS metrics (
+        ts INTEGER,
+        cdn_name TEXT,
+        host TEXT,
+        target_port INTEGER,
+        connection_count INTEGER,
+        tx_bps INTEGER DEFAULT 0,
+        rx_bps INTEGER DEFAULT 0
+    )''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS users (
+        username TEXT PRIMARY KEY,
+        hashed_password TEXT,
+        created_at INTEGER
+    )''')
     conn.commit()
     for col in ('tx_bps', 'rx_bps'):
         try:
