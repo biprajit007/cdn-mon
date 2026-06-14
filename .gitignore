@@ -1,19 +1,18 @@
-__pycache__/
-*.py[cod]
-*.so
-.venv/
-venv/
-env/
-ENV/
-.python-version
-.pytest_cache/
-.mypy_cache/
-.coverage
-htmlcov/
-dist/
-build/
-*.egg-info/
-.DS_Store
+# Environment (never commit real credentials)
 .env
-.env.*
-node_modules/
+
+# SSL certs
+ssl/*.pem
+ssl/*.crt
+ssl/*.key
+
+# SQLite database
+data/metrics.db
+
+# Stale domain tracking files
+data/domain_config.json
+data/domain_config.json.example
+
+# Python
+__pycache__/
+*.pyc

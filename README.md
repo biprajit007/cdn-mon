@@ -1,100 +1,85 @@
-# cdn-monitoring-system
+# cdn-mon
 
-A small two-service monitoring stack: an agent counts TCP connections for a target port and sends metrics to a FastAPI server that stores them in SQLite and renders a simple dashboard.
+CDN monitoring portal — real-time dashboard for tracking connection counts and bandwidth across CDN nodes.
 
-## Key features
+## Stack
 
-- Docker Compose deployment with separate agent and server containers
-- Token-protected ingest endpoint
-- SQLite-backed metric storage
-- Interactive HTML dashboard with live counts, graph, map, and history views
-- Management page for adding CDNs and map placement
-- JSON APIs for latest rows, series data, and map config
+- **Backend:** FastAPI + Uvicorn, SQLite (WAL mode)
+- **Frontend:** Inline HTML/JS, Chart.js, Leaflet maps
+- **Auth:** JWT session cookies, bcrypt passwords
+- **Proxy:** nginx:1.25-alpine (handles HTTPS + agent ingest port)
 
-## Project structure
+## Features
 
-- `docker-compose.yml` — Runs the server and the agent together
-- `agent/agent.py` — Collects connection counts via ss and POSTs them to the server
-- `server/app.py` — FastAPI app for ingestion, storage, and dashboard rendering
-- `.env.example` — Environment variables used by both services
+- Real-time connection count and TX/RX bandwidth per CDN node
+- Connection graph, bandwidth graph, peak load gauge
+- World/Bangladesh map with CDN node pins
+- Historical trends (24h / 7d / 30d)
+- CDN management page (add/remove nodes, map placement)
+- Multi-user login with JWT sessions
 
-## Requirements
-
-- Docker and Docker Compose
-- Linux-style ss command in the agent environment
-- Writable ./data directory for SQLite persistence
-
-## Setup
+## Quick Start
 
 ```bash
-git clone https://github.com/biprajit007/cdn-monitoring-system.git
-cd cdn-monitoring-system
+git clone https://github.com/biprajit007/cdn-mon.git
+cd cdn-mon
+
+# 1. Configure environment
 cp .env.example .env
-docker compose up --build
+nano .env   # set JWT_SECRET, LEGACY_API_KEY, INGEST_TOKEN
+
+# 2. Place SSL certs
+cp /path/to/cert.pem ssl/
+cp /path/to/key.pem  ssl/
+
+# 3. Deploy
+docker compose up -d
 ```
 
-Then open:
+Portal: `https://<your-domain>:18443`  
+Default login: `admin` / `cdn-monitor-2026!`
 
-```bash
-https://cdn-monitor.rockstreamer.com:18443/login
-```
+## Ports
 
-The root URL redirects there until you log in.
+| Port | Purpose |
+|------|---------|
+| 18443 | HTTPS portal |
+| 18080 | Agent metric ingest (HTTP) |
+| 18880 | HTTP → HTTPS redirect |
 
-Use the Management page to add or edit CDN entries and map placement.
-If a CDN shows up there but has no live count, it means no agent is sending metrics with that `CDN_NAME` yet.
+## Agent Integration
 
-Default first login, if bootstrap is enabled:
+Metrics are pushed by **[rocks-cdn](https://github.com/biprajit007/rocks-cdn)** agents running on each CDN node.
 
-- Username: `admin`
-- Password: `cdn-monitor-2026!`
-
-### Map configuration
-
-Edit `data/cdn_map.json` to place CDNs on the Bangladesh map.
-Example format:
-
+Agent sends `POST /api/metrics` with:
 ```json
 {
-  "cdn1": { "place_name": "Dhaka", "area_name": "inside-country" },
-  "cdn2": { "place_name": "Chattogram", "area_name": "inside-country" }
+  "server_id": "cdn1",
+  "connection_count": 1234,
+  "tx_bps": 500000000,
+  "rx_bps": 100000000
+}
+```
+Header: `X-API-Key: <LEGACY_API_KEY>`
+
+## Map Configuration
+
+Edit `data/cdn_map.json` (created automatically, use management page or edit directly):
+```json
+{
+  "cdn1": { "place_name": "Dhaka",      "area_name": "Mirpur" },
+  "cdn2": { "place_name": "Chattogram", "area_name": "Agrabad" }
 }
 ```
 
-You can copy `cdn_map.example.json` as a starter.
+## API Endpoints
 
-### History filters
-
-- `24h` , default today view
-- `7d` , weekly
-- `30d` , monthly
-
-## Configuration
-
-- INGEST_TOKEN secures writes from the agent to the server.
-- TARGET_PORT selects which port the agent counts active TCP connections for.
-- SERVER_ENDPOINT points the agent at the API endpoint.
-
-## Usage
-
-### Open dashboard
-
-```bash
-http://localhost:18443/
-```
-
-### Fetch latest rows
-
-```bash
-curl http://localhost:18443/api/latest
-```
-
-## Safety notes
-
-- The agent shells out to ss inside its container/host environment. Verify the command exists and that the reported port is the one you actually want to monitor.
-
-## Limitations / next improvements
-
-- No auth on the read-only dashboard
-- No retention policy or charting
-- Agent health and retry behavior are minimal
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/metrics` | Agent ingest (legacy, X-API-Key) |
+| `POST /api/ingest` | Agent ingest (new, X-Agent-Token) |
+| `GET /api/latest` | Latest metrics per CDN |
+| `GET /api/series?range=24h` | Connection time series |
+| `GET /api/bandwidth?minutes=30` | TX/RX bandwidth series |
+| `GET /api/map-config` | CDN map markers |
+| `GET /api/history` | Historical data |
