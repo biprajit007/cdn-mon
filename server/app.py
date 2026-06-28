@@ -105,6 +105,7 @@ class MetricIn(BaseModel):
     host: str
     target_port: int
     connection_count: int
+    unique_connection_count: Optional[int] = 0
     tx_bps: Optional[int] = 0
     rx_bps: Optional[int] = 0
     ts: Optional[int] = None
@@ -113,6 +114,7 @@ class LegacyMetricIn(BaseModel):
     server_id: str
     server_ip: Optional[str] = None
     connection_count: int
+    unique_connection_count: Optional[int] = 0
     timestamp: Optional[str] = None
     tx_bps: Optional[int] = 0
     rx_bps: Optional[int] = 0
@@ -187,6 +189,7 @@ def startup():
         host TEXT,
         target_port INTEGER,
         connection_count INTEGER,
+        unique_connection_count INTEGER DEFAULT 0,
         tx_bps INTEGER DEFAULT 0,
         rx_bps INTEGER DEFAULT 0
     )''')
@@ -196,7 +199,7 @@ def startup():
         created_at INTEGER
     )''')
     conn.commit()
-    for col in ('tx_bps', 'rx_bps'):
+    for col in ('tx_bps', 'rx_bps', 'unique_connection_count'):
         try:
             conn.execute(f'ALTER TABLE metrics ADD COLUMN {col} INTEGER DEFAULT 0')
             conn.commit()
@@ -333,7 +336,7 @@ def get_latest_rows_by_cdn():
     cdn_list = list(cdns)
     logger.info(f'Querying metrics for CDNs: {cdn_list}')
     rows = conn.execute(f"""
-    SELECT ts, cdn_name, host, target_port, connection_count, tx_bps, rx_bps
+    SELECT ts, cdn_name, host, target_port, connection_count, unique_connection_count, tx_bps, rx_bps
     FROM metrics
     WHERE cdn_name IN ({ph}) AND target_port = 443
     AND (cdn_name, ts) IN (
@@ -345,7 +348,7 @@ def get_latest_rows_by_cdn():
     """, cdn_list + cdn_list).fetchall()
     logger.info(f'Found {len(rows)} rows for latest metrics')
     return {
-        r[1]: {'ts': r[0], 'cdn_name': r[1], 'host': r[2], 'target_port': r[3], 'connection_count': r[4], 'tx_bps': r[5] or 0, 'rx_bps': r[6] or 0}
+        r[1]: {'ts': r[0], 'cdn_name': r[1], 'host': r[2], 'target_port': r[3], 'connection_count': r[4], 'unique_connection_count': r[5] or 0, 'tx_bps': r[6] or 0, 'rx_bps': r[7] or 0}
         for r in rows
     }
 
@@ -359,7 +362,7 @@ def merge_latest_with_config(default_count=0):
         if row:
             merged.update(row)
         else:
-            merged.update({'ts': None, 'host': '', 'target_port': 443, 'connection_count': default_count})
+            merged.update({'ts': None, 'host': '', 'target_port': 443, 'connection_count': default_count, 'unique_connection_count': 0})
         items.append(merged)
     return items
 
@@ -527,13 +530,15 @@ def dashboard(token: Optional[str] = Cookie(None)):
       const cards=document.getElementById('cards');
       cards.replaceChildren();
       const total = items.reduce((sum, item) => sum + Number(item.connection_count || 0), 0);
+      const totalUnique = items.reduce((sum, item) => sum + Number(item.unique_connection_count || 0), 0);
       setCard(cards, 'Total CDNs', items.length, 'configured nodes');
       setCard(cards, 'Total Connections', total.toLocaleString(), 'across all CDNs');
+      setCard(cards, 'Unique Viewers', totalUnique.toLocaleString(), 'distinct IPs across all CDNs');
       if(items.length){{
         const top = [...items].sort((a,b)=>Number(b.connection_count||0)-Number(a.connection_count||0))[0];
         setCard(cards, 'Busiest CDN', top.cdn_name, top.connection_count + ' connections');
       }}
-      items.forEach(item => setCard(cards, item.cdn_name, Number(item.connection_count||0).toLocaleString(), item.place_name || item.host || '—'));
+      items.forEach(item => setCard(cards, item.cdn_name, Number(item.connection_count||0).toLocaleString(), (item.place_name || item.host || '—') + ' · ' + Number(item.unique_connection_count||0).toLocaleString() + ' unique'));
     }}
 
     function renderLatestTable(items){{
@@ -541,7 +546,7 @@ def dashboard(token: Optional[str] = Cookie(None)):
       if(!items.length){{ target.innerHTML = '<div class="empty">No data yet.</div>'; return; }}
       const table=document.createElement('table');
       const head=document.createElement('tr');
-      ['CDN','IP','Connections','Last Seen'].forEach(t => {{ const th=document.createElement('th'); th.textContent=t; head.appendChild(th); }});
+      ['CDN','IP','Connections','Unique Viewers','Last Seen'].forEach(t => {{ const th=document.createElement('th'); th.textContent=t; head.appendChild(th); }});
       table.appendChild(head);
       items.forEach(item => {{
         const tr=document.createElement('tr');
@@ -550,6 +555,7 @@ def dashboard(token: Optional[str] = Cookie(None)):
           '<span class="dot-live"></span>' + esc(item.cdn_name),
           esc(item.ip || '—'),
           '<b>' + Number(item.connection_count??0).toLocaleString() + '</b>',
+          '<b style="color:#7fe8ff">' + Number(item.unique_connection_count??0).toLocaleString() + '</b>',
           esc(tsText)
         ];
         cells.forEach(html => {{ const td=document.createElement('td'); td.innerHTML=html; tr.appendChild(td); }});
@@ -1455,8 +1461,8 @@ def ingest(metric: MetricIn, x_agent_token: Optional[str] = Header(None)):
         raise HTTPException(status_code=400, detail='target_port must be 443')
     ts = metric.ts or int(time.time())
     conn.execute(
-        'INSERT INTO metrics(ts, cdn_name, host, target_port, connection_count, tx_bps, rx_bps) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        (ts, metric.cdn_name, metric.host, metric.target_port, metric.connection_count, metric.tx_bps or 0, metric.rx_bps or 0)
+        'INSERT INTO metrics(ts, cdn_name, host, target_port, connection_count, unique_connection_count, tx_bps, rx_bps) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        (ts, metric.cdn_name, metric.host, metric.target_port, metric.connection_count, metric.unique_connection_count or 0, metric.tx_bps or 0, metric.rx_bps or 0)
     )
     conn.commit()
     return {'status': 'ok', 'ts': ts}
@@ -1467,8 +1473,8 @@ def legacy_metrics(metric: LegacyMetricIn, x_api_key: Optional[str] = Header(Non
         raise HTTPException(status_code=401, detail='invalid api key')
     ts = int(datetime.fromisoformat(metric.timestamp.replace('Z', '+00:00')).timestamp()) if metric.timestamp else int(time.time())
     conn.execute(
-        'INSERT INTO metrics(ts, cdn_name, host, target_port, connection_count, tx_bps, rx_bps) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        (ts, metric.server_id, metric.server_ip or '', 443, metric.connection_count, metric.tx_bps or 0, metric.rx_bps or 0)
+        'INSERT INTO metrics(ts, cdn_name, host, target_port, connection_count, unique_connection_count, tx_bps, rx_bps) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        (ts, metric.server_id, metric.server_ip or '', 443, metric.connection_count, metric.unique_connection_count or 0, metric.tx_bps or 0, metric.rx_bps or 0)
     )
     conn.commit()
     return {'status': 'ok', 'ts': ts, 'cdn_name': metric.server_id}
