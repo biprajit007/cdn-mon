@@ -867,25 +867,23 @@ def fifa_page(token: Optional[str] = Cookie(None)):
     .summary-bar{{background:#0a1520;border:1px solid #27d36b;border-radius:12px;padding:16px 24px;margin-bottom:20px;display:flex;align-items:center;gap:28px;flex-wrap:wrap}}
     .sb-item{{text-align:center}}
     .sb-label{{font-size:11px;opacity:.65;margin-bottom:3px;letter-spacing:.04em}}
-    .sb-val{{font-size:38px;font-weight:700;line-height:1}}
-    .divider{{width:1px;background:#1f3b4d;align-self:stretch;min-height:40px}}
-    .grid4{{display:grid;grid-template-columns:1fr 1fr;gap:16px}}
+    .sb-val{{font-size:60px;font-weight:700;line-height:1}}
+    .divider{{width:1px;background:#1f3b4d;align-self:stretch;min-height:48px}}
+    .grid4{{display:grid;grid-template-columns:1fr 1fr;gap:20px}}
     @media(max-width:900px){{.grid4{{grid-template-columns:1fr}}}}
-    .cdn-panel{{background:#0a1520;border:1px solid #1f3b4d;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:14px}}
-    .cdn-panel-header{{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}}
-    .cdn-title{{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px}}
-    .dot-live{{display:inline-block;width:9px;height:9px;border-radius:50%;background:#27d36b;animation:dotpulse 1.4s infinite}}
+    .cdn-panel{{background:#0a1520;border:1px solid #1f3b4d;border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:16px}}
+    .cdn-panel-header{{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}}
+    .cdn-title{{font-size:22px;font-weight:700;display:flex;align-items:center;gap:10px}}
+    .dot-live{{display:inline-block;width:11px;height:11px;border-radius:50%;background:#27d36b;animation:dotpulse 1.4s infinite}}
     @keyframes dotpulse{{0%{{box-shadow:0 0 0 0 rgba(39,211,107,.7)}}70%{{box-shadow:0 0 0 6px rgba(39,211,107,0)}}100%{{box-shadow:0 0 0 0 rgba(39,211,107,0)}}}}
-    .cdn-stats{{display:flex;gap:20px;flex-wrap:wrap}}
+    .cdn-stats{{display:flex;gap:28px;flex-wrap:wrap}}
     .stat{{text-align:center}}
-    .stat-label{{font-size:10px;opacity:.6;margin-bottom:2px}}
-    .stat-val{{font-size:22px;font-weight:700}}
-    .bw-row{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+    .stat-label{{font-size:11px;opacity:.6;margin-bottom:4px;letter-spacing:.04em}}
+    .stat-val{{font-size:38px;font-weight:700;line-height:1}}
+    .bw-row{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
     @media(max-width:600px){{.bw-row{{grid-template-columns:1fr}}}}
-    .bw-box{{background:#081018;border:1px solid #1f3b4d;border-radius:10px;padding:12px}}
-    .bw-title{{font-size:11px;font-weight:600;opacity:.7;margin-bottom:6px;display:flex;justify-content:space-between}}
-    .bw-cur{{font-size:18px;font-weight:700;margin-bottom:8px}}
-    canvas{{width:100%!important;height:160px!important}}
+    .bw-box{{background:#081018;border:1px solid #1f3b4d;border-radius:10px;padding:14px}}
+    .bw-title{{font-size:12px;font-weight:600;opacity:.75;margin-bottom:8px;display:flex;justify-content:space-between}}
     </style>
     </head><body><div class='wrap'>
     <div class='nav'>
@@ -961,8 +959,8 @@ def fifa_page(token: Optional[str] = Cookie(None)):
           animation: false, responsive: true, maintainAspectRatio: false,
           plugins: {{ legend: {{ display: false }} }},
           scales: {{
-            x: {{ ticks: {{ color: '#7fa8b8', maxTicksLimit: 6, font: {{ size: 9 }} }}, grid: {{ color: '#1a2e3a' }} }},
-            y: {{ ticks: {{ color: '#7fa8b8', font: {{ size: 9 }}, callback: v => fmtBps(v) }}, grid: {{ color: '#1a2e3a' }}, min: 0 }}
+            x: {{ ticks: {{ color: '#7fa8b8', maxTicksLimit: 6, font: {{ size: 11 }} }}, grid: {{ color: '#1a2e3a' }} }},
+            y: {{ ticks: {{ color: '#7fa8b8', font: {{ size: 11 }}, callback: v => fmtBps(v) }}, grid: {{ color: '#1a2e3a' }}, min: 0 }}
           }}
         }}
       }});
@@ -994,11 +992,11 @@ def fifa_page(token: Optional[str] = Cookie(None)):
           <div class='bw-row'>
             <div class='bw-box'>
               <div class='bw-title'><span style='color:#a4ff70'>&#8593; TX — Upload / Egress</span></div>
-              <div style='height:160px'><canvas id='tx-${{cdn}}'></canvas></div>
+              <div style='height:280px'><canvas id='tx-${{cdn}}'></canvas></div>
             </div>
             <div class='bw-box'>
               <div class='bw-title'><span style='color:#ffd670'>&#8595; RX — Download / Ingress</span></div>
-              <div style='height:160px'><canvas id='rx-${{cdn}}'></canvas></div>
+              <div style='height:280px'><canvas id='rx-${{cdn}}'></canvas></div>
             </div>
           </div>
         `;
