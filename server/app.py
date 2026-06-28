@@ -454,13 +454,18 @@ def dashboard(token: Optional[str] = Cookie(None)):
     </div>
 
     <div class='cards' id='cards'></div>
-    <div style='background:#0a1520;border:1px solid #27d36b;border-radius:12px;padding:16px 24px;margin-bottom:14px;display:flex;align-items:center;gap:20px'>
+    <div style='background:#0a1520;border:1px solid #27d36b;border-radius:12px;padding:16px 24px;margin-bottom:14px;display:flex;align-items:center;gap:20px;flex-wrap:wrap'>
       <div>
         <div style='font-size:12px;opacity:.7;margin-bottom:4px'>TOTAL CONNECTIONS (ALL CDNs)</div>
         <div id='totalCount' style='font-size:48px;font-weight:700;color:#27d36b;line-height:1'>—</div>
       </div>
-      <div style='width:1px;background:#1f3b4d;align-self:stretch'></div>
-      <div id='perCdnCounts' style='display:flex;gap:16px;flex-wrap:wrap'></div>
+      <div style='width:1px;background:#1f3b4d;align-self:stretch;min-height:48px'></div>
+      <div id='perCdnCounts' style='display:flex;gap:16px;flex-wrap:wrap;flex:1'></div>
+      <div style='width:1px;background:#1f3b4d;align-self:stretch;min-height:48px'></div>
+      <div>
+        <div style='font-size:12px;opacity:.7;margin-bottom:4px'>TOTAL UNIQUE USERS (ALL CDNs)</div>
+        <div id='totalUnique' style='font-size:48px;font-weight:700;color:#7fe8ff;line-height:1'>—</div>
+      </div>
     </div>
 
     <div class='panel'>
@@ -483,9 +488,13 @@ def dashboard(token: Optional[str] = Cookie(None)):
           <div id='topCdnsChart' style='height:220px'></div>
         </div>
         <div style='background:#081018;border:1px solid #1f3b4d;border-radius:10px;padding:12px'>
-          <div style='font-size:12px;opacity:.7;margin-bottom:8px;font-weight:600'>Legend</div>
-          <div id='legend' class='legend' style='display:flex;flex-direction:column;gap:6px;margin-top:0'></div>
+          <div style='font-size:12px;opacity:.7;margin-bottom:8px;font-weight:600'>Top CDNs by Unique Viewers</div>
+          <div id='topCdnsUniqueChart' style='height:220px'></div>
         </div>
+      </div>
+      <div style='margin-top:16px;background:#081018;border:1px solid #1f3b4d;border-radius:10px;padding:12px'>
+        <div style='font-size:12px;opacity:.7;margin-bottom:8px;font-weight:600'>Legend</div>
+        <div id='legend' class='legend' style='display:flex;flex-direction:row;gap:12px;flex-wrap:wrap;margin-top:0'></div>
       </div>
     </div>
 
@@ -630,13 +639,13 @@ def dashboard(token: Optional[str] = Cookie(None)):
       canvas.appendChild(label);
     }}
 
-    function renderTopCdns(items){{
-      const target = document.getElementById('topCdnsChart');
+    function renderBarChart(targetId, items, valueKey, barColor){{
+      const target = document.getElementById(targetId);
       if(!target) return;
-      const sorted = [...items].sort((a,b) => Number(b.connection_count||0) - Number(a.connection_count||0)).slice(0, 5);
+      const sorted = [...items].sort((a,b) => Number(b[valueKey]||0) - Number(a[valueKey]||0)).slice(0, 5);
       if(!sorted.length) {{ target.innerHTML = '<div class="empty">No data</div>'; return; }}
 
-      const max = sorted[0].connection_count || 1;
+      const max = Number(sorted[0][valueKey]) || 1;
       const h = 20, gap = 35;
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('width', '100%');
@@ -645,35 +654,37 @@ def dashboard(token: Optional[str] = Cookie(None)):
 
       sorted.forEach((item, idx) => {{
         const y = idx * gap;
-        const width = (item.connection_count / max) * 200;
+        const val = Number(item[valueKey] || 0);
+        const width = (val / max) * 200;
+        const color = barColor || palette[idx % palette.length];
         const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', '60');
-        rect.setAttribute('y', y + 2);
-        rect.setAttribute('width', width);
-        rect.setAttribute('height', h);
-        rect.setAttribute('fill', palette[idx % palette.length]);
-        rect.setAttribute('rx', '4');
-        rect.setAttribute('opacity', '.8');
+        rect.setAttribute('x', '60'); rect.setAttribute('y', y + 2);
+        rect.setAttribute('width', Math.max(width, 2)); rect.setAttribute('height', h);
+        rect.setAttribute('fill', color); rect.setAttribute('rx', '4'); rect.setAttribute('opacity', '.8');
         svg.appendChild(rect);
 
         const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.setAttribute('x', '4');
-        label.setAttribute('y', y + h + 4);
-        label.setAttribute('font-size', '11');
-        label.setAttribute('fill', '#7fe8ff');
+        label.setAttribute('x', '4'); label.setAttribute('y', y + h + 4);
+        label.setAttribute('font-size', '11'); label.setAttribute('fill', '#7fe8ff');
         label.textContent = item.cdn_name;
         svg.appendChild(label);
 
         const count = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        count.setAttribute('x', width + 65);
-        count.setAttribute('y', y + h + 4);
-        count.setAttribute('font-size', '11');
-        count.setAttribute('fill', '#d8f7ff');
+        count.setAttribute('x', Math.max(width, 2) + 65); count.setAttribute('y', y + h + 4);
+        count.setAttribute('font-size', '11'); count.setAttribute('fill', '#d8f7ff');
         count.setAttribute('font-weight', '700');
-        count.textContent = item.connection_count.toLocaleString();
+        count.textContent = val.toLocaleString();
         svg.appendChild(count);
       }});
       target.replaceChildren(svg);
+    }}
+
+    function renderTopCdns(items){{
+      renderBarChart('topCdnsChart', items, 'connection_count', null);
+    }}
+
+    function renderTopCdnsUnique(items){{
+      renderBarChart('topCdnsUniqueChart', items, 'unique_connection_count', '#7fe8ff');
     }}
 
     function renderHomeChart(series){{
@@ -746,14 +757,17 @@ def dashboard(token: Optional[str] = Cookie(None)):
       const series = await seriesRes.json();
       const items = latest.items || [];
       const liveTotal = items.reduce((sum, item) => sum + Number(item.connection_count || 0), 0);
+      const liveUnique = items.reduce((sum, item) => sum + Number(item.unique_connection_count || 0), 0);
       document.getElementById('totalCount').textContent = liveTotal.toLocaleString();
+      document.getElementById('totalUnique').textContent = liveUnique.toLocaleString();
       const perCdn = document.getElementById('perCdnCounts');
       perCdn.replaceChildren();
       items.forEach(item => {{
         const d = document.createElement('div');
         d.style.cssText = 'text-align:center';
         d.innerHTML = '<div style="font-size:11px;opacity:.7">' + esc(item.cdn_name) + '</div>'
-          + '<div style="font-size:20px;font-weight:700;color:#27d36b">' + Number(item.connection_count||0).toLocaleString() + '</div>';
+          + '<div style="font-size:20px;font-weight:700;color:#27d36b">' + Number(item.connection_count||0).toLocaleString() + '</div>'
+          + '<div style="font-size:11px;color:#7fe8ff">' + Number(item.unique_connection_count||0).toLocaleString() + ' uniq</div>';
         perCdn.appendChild(d);
       }});
       document.getElementById('homeMeta').textContent = 'Last 24h · auto-refresh 5s';
@@ -762,6 +776,7 @@ def dashboard(token: Optional[str] = Cookie(None)):
       renderHomeChart(series.series || {{}});
       renderGauge(items);
       renderTopCdns(items);
+      renderTopCdnsUnique(items);
       renderLatestTable(items);
     }}
 
