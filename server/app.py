@@ -445,7 +445,7 @@ def dashboard(token: Optional[str] = Cookie(None)):
       </div>
       <div class='navlinks'>
         <a class='badge' href='/'>Home</a>
-        
+        <a class='badge' href='/fifa'>FIFA CDN</a>
         <a class='badge' href='/map'>CDN MAP</a>
         <a class='badge' href='/history'>History</a>
         <a class='badge' href='/management'>Management</a>
@@ -848,6 +848,222 @@ def dashboard(token: Optional[str] = Cookie(None)):
     </script></body></html>"""
 
 
+@app.get('/fifa', response_class=HTMLResponse)
+def fifa_page(token: Optional[str] = Cookie(None)):
+    username = username_from_token(token)
+    if not username:
+        return RedirectResponse(url='/login', status_code=303)
+    return f"""<!doctype html><html><head><title>FIFA CDN</title>
+    <meta name='viewport' content='width=device-width,initial-scale=1'>
+    <style>
+    *{{box-sizing:border-box}}
+    body{{font-family:Arial;background:#060d14;color:#d8f7ff;padding:20px;margin:0}}
+    a{{color:#7fe8ff;text-decoration:none}} a:hover{{text-decoration:underline}}
+    .wrap{{max-width:1500px;margin:0 auto}}
+    .nav{{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}}
+    .navlinks{{display:flex;gap:12px;flex-wrap:wrap}}
+    .badge{{display:inline-block;padding:4px 10px;border:1px solid #1f3b4d;border-radius:999px;background:#0a1520;font-size:13px}}
+    .badge.active{{border-color:#27d36b;color:#27d36b}}
+    .summary-bar{{background:#0a1520;border:1px solid #27d36b;border-radius:12px;padding:16px 24px;margin-bottom:20px;display:flex;align-items:center;gap:28px;flex-wrap:wrap}}
+    .sb-item{{text-align:center}}
+    .sb-label{{font-size:11px;opacity:.65;margin-bottom:3px;letter-spacing:.04em}}
+    .sb-val{{font-size:38px;font-weight:700;line-height:1}}
+    .divider{{width:1px;background:#1f3b4d;align-self:stretch;min-height:40px}}
+    .grid4{{display:grid;grid-template-columns:1fr 1fr;gap:16px}}
+    @media(max-width:900px){{.grid4{{grid-template-columns:1fr}}}}
+    .cdn-panel{{background:#0a1520;border:1px solid #1f3b4d;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:14px}}
+    .cdn-panel-header{{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}}
+    .cdn-title{{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px}}
+    .dot-live{{display:inline-block;width:9px;height:9px;border-radius:50%;background:#27d36b;animation:dotpulse 1.4s infinite}}
+    @keyframes dotpulse{{0%{{box-shadow:0 0 0 0 rgba(39,211,107,.7)}}70%{{box-shadow:0 0 0 6px rgba(39,211,107,0)}}100%{{box-shadow:0 0 0 0 rgba(39,211,107,0)}}}}
+    .cdn-stats{{display:flex;gap:20px;flex-wrap:wrap}}
+    .stat{{text-align:center}}
+    .stat-label{{font-size:10px;opacity:.6;margin-bottom:2px}}
+    .stat-val{{font-size:22px;font-weight:700}}
+    .bw-row{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+    @media(max-width:600px){{.bw-row{{grid-template-columns:1fr}}}}
+    .bw-box{{background:#081018;border:1px solid #1f3b4d;border-radius:10px;padding:12px}}
+    .bw-title{{font-size:11px;font-weight:600;opacity:.7;margin-bottom:6px;display:flex;justify-content:space-between}}
+    .bw-cur{{font-size:18px;font-weight:700;margin-bottom:8px}}
+    canvas{{width:100%!important;height:160px!important}}
+    </style>
+    </head><body><div class='wrap'>
+    <div class='nav'>
+      <div>
+        <h1 style='margin:0;display:flex;align-items:center;gap:10px'>
+          <span style='font-size:28px'>⚽</span> FIFA CDN Dashboard
+        </h1>
+        <div style='opacity:.6;margin-top:4px;font-size:13px'>BD Edge CDNs · Real-time bandwidth &amp; viewer metrics</div>
+      </div>
+      <div class='navlinks'>
+        <a class='badge' href='/'>Home</a>
+        <a class='badge active' href='/fifa'>FIFA CDN</a>
+        <a class='badge' href='/map'>CDN MAP</a>
+        <a class='badge' href='/history'>History</a>
+        <a class='badge' href='/management'>Management</a>
+        <a class='badge' href='/logout'>Logout ({html.escape(username)})</a>
+      </div>
+    </div>
+
+    <div class='summary-bar'>
+      <div class='sb-item'>
+        <div class='sb-label'>TOTAL CONNECTIONS</div>
+        <div class='sb-val' id='sumConn' style='color:#27d36b'>—</div>
+      </div>
+      <div class='divider'></div>
+      <div class='sb-item'>
+        <div class='sb-label'>UNIQUE VIEWERS</div>
+        <div class='sb-val' id='sumUniq' style='color:#7fe8ff'>—</div>
+      </div>
+      <div class='divider'></div>
+      <div class='sb-item'>
+        <div class='sb-label'>TOTAL TX (EGRESS)</div>
+        <div class='sb-val' id='sumTx' style='color:#a4ff70'>—</div>
+      </div>
+      <div class='divider'></div>
+      <div class='sb-item'>
+        <div class='sb-label'>TOTAL RX (INGRESS)</div>
+        <div class='sb-val' id='sumRx' style='color:#ffd670'>—</div>
+      </div>
+      <div class='divider'></div>
+      <div style='opacity:.5;font-size:11px' id='fifaMeta'></div>
+    </div>
+
+    <div class='grid4' id='cdnGrid'></div>
+
+    </div>
+    <script src='https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js'></script>
+    <script>
+    const FIFA_CDNS = ['cdn1','cdn2','cdn3','cdn4'];
+    const COLORS = {{
+      cdn1: '#7fe8ff',
+      cdn2: '#a4ff70',
+      cdn3: '#ffd670',
+      cdn4: '#ff8f70'
+    }};
+
+    function esc(t){{ const d=document.createElement('div'); d.textContent=String(t??''); return d.innerHTML; }}
+
+    function fmtBps(bps){{
+      if(bps>=1e9) return (bps/1e9).toFixed(2)+' Gbps';
+      if(bps>=1e6) return (bps/1e6).toFixed(2)+' Mbps';
+      if(bps>=1e3) return (bps/1e3).toFixed(1)+' Kbps';
+      return bps+' bps';
+    }}
+
+    function makeChart(canvasId, color){{
+      const ctx = document.getElementById(canvasId).getContext('2d');
+      return new Chart(ctx, {{
+        type: 'line',
+        data: {{ labels: [], datasets: [{{ data: [], borderColor: color, backgroundColor: color+'22',
+          borderWidth: 2, pointRadius: 0, tension: 0.3, fill: true, spanGaps: true }}] }},
+        options: {{
+          animation: false, responsive: true, maintainAspectRatio: false,
+          plugins: {{ legend: {{ display: false }} }},
+          scales: {{
+            x: {{ ticks: {{ color: '#7fa8b8', maxTicksLimit: 6, font: {{ size: 9 }} }}, grid: {{ color: '#1a2e3a' }} }},
+            y: {{ ticks: {{ color: '#7fa8b8', font: {{ size: 9 }}, callback: v => fmtBps(v) }}, grid: {{ color: '#1a2e3a' }}, min: 0 }}
+          }}
+        }}
+      }});
+    }}
+
+    const charts = {{}};
+
+    function buildPanels(){{
+      const grid = document.getElementById('cdnGrid');
+      grid.replaceChildren();
+      FIFA_CDNS.forEach(cdn => {{
+        const col = COLORS[cdn] || '#7fe8ff';
+        const panel = document.createElement('div');
+        panel.className = 'cdn-panel';
+        panel.id = 'panel-'+cdn;
+        panel.innerHTML = `
+          <div class='cdn-panel-header'>
+            <div class='cdn-title'>
+              <span class='dot-live'></span>
+              ${{esc(cdn.toUpperCase())}}
+            </div>
+            <div class='cdn-stats' id='stats-${{cdn}}'>
+              <div class='stat'><div class='stat-label'>CONNECTIONS</div><div class='stat-val' id='conn-${{cdn}}' style='color:${{col}}'>—</div></div>
+              <div class='stat'><div class='stat-label'>UNIQUE VIEWERS</div><div class='stat-val' id='uniq-${{cdn}}' style='color:#7fe8ff'>—</div></div>
+              <div class='stat'><div class='stat-label'>TX NOW</div><div class='stat-val' id='tx-now-${{cdn}}' style='color:#a4ff70'>—</div></div>
+              <div class='stat'><div class='stat-label'>RX NOW</div><div class='stat-val' id='rx-now-${{cdn}}' style='color:#ffd670'>—</div></div>
+            </div>
+          </div>
+          <div class='bw-row'>
+            <div class='bw-box'>
+              <div class='bw-title'><span style='color:#a4ff70'>&#8593; TX — Upload / Egress</span></div>
+              <div style='height:160px'><canvas id='tx-${{cdn}}'></canvas></div>
+            </div>
+            <div class='bw-box'>
+              <div class='bw-title'><span style='color:#ffd670'>&#8595; RX — Download / Ingress</span></div>
+              <div style='height:160px'><canvas id='rx-${{cdn}}'></canvas></div>
+            </div>
+          </div>
+        `;
+        grid.appendChild(panel);
+        charts[cdn] = {{
+          tx: makeChart('tx-'+cdn, '#a4ff70'),
+          rx: makeChart('rx-'+cdn, '#ffd670')
+        }};
+      }});
+    }}
+
+    async function loadLatest(){{
+      try {{
+        const res = await fetch('/api/latest');
+        const data = await res.json();
+        const items = (data.items || []).filter(i => FIFA_CDNS.includes(i.cdn_name));
+        let sumConn=0, sumUniq=0, sumTx=0, sumRx=0;
+        items.forEach(item => {{
+          sumConn += Number(item.connection_count||0);
+          sumUniq += Number(item.unique_connection_count||0);
+          sumTx   += Number(item.tx_bps||0);
+          sumRx   += Number(item.rx_bps||0);
+          const c = item.cdn_name;
+          const el = id => document.getElementById(id+'-'+c);
+          if(el('conn'))  el('conn').textContent  = Number(item.connection_count||0).toLocaleString();
+          if(el('uniq'))  el('uniq').textContent  = Number(item.unique_connection_count||0).toLocaleString();
+          if(el('tx-now')) el('tx-now').textContent = fmtBps(Number(item.tx_bps||0));
+          if(el('rx-now')) el('rx-now').textContent = fmtBps(Number(item.rx_bps||0));
+        }});
+        document.getElementById('sumConn').textContent = sumConn.toLocaleString();
+        document.getElementById('sumUniq').textContent = sumUniq.toLocaleString();
+        document.getElementById('sumTx').textContent   = fmtBps(sumTx);
+        document.getElementById('sumRx').textContent   = fmtBps(sumRx);
+      }} catch(e) {{ console.error('latest err', e); }}
+    }}
+
+    async function loadBandwidth(){{
+      try {{
+        const responses = await Promise.all(
+          FIFA_CDNS.map(cdn => fetch('/api/bandwidth?cdn_name='+cdn+'&minutes=30').then(r=>r.json()))
+        );
+        responses.forEach((data, idx) => {{
+          const cdn = FIFA_CDNS[idx];
+          const pts = data.points || [];
+          const labels = pts.map(p => new Date(p.ts*1000).toLocaleTimeString([],{{hour:'2-digit',minute:'2-digit'}}));
+          const txData = pts.map(p => p.tx_bps);
+          const rxData = pts.map(p => p.rx_bps);
+          const c = charts[cdn];
+          if(c){{
+            c.tx.data.labels = labels; c.tx.data.datasets[0].data = txData; c.tx.update('none');
+            c.rx.data.labels = labels; c.rx.data.datasets[0].data = rxData; c.rx.update('none');
+          }}
+        }});
+        document.getElementById('fifaMeta').textContent = 'Last 30 min · 1-min buckets · auto-refresh 15s';
+      }} catch(e) {{ console.error('bw err', e); }}
+    }}
+
+    buildPanels();
+    loadLatest();
+    loadBandwidth();
+    setInterval(loadLatest, 5000);
+    setInterval(loadBandwidth, 15000);
+    </script></body></html>"""
+
+
 @app.get('/map', response_class=HTMLResponse)
 def map_page(token: Optional[str] = Cookie(None)):
     username = username_from_token(token)
@@ -900,7 +1116,7 @@ def map_page(token: Optional[str] = Cookie(None)):
       <div><h1 style='margin:0;font-size:20px'>CDN MAP</h1></div>
       <div class='navlinks'>
         <a class='badge' href='/'>Home</a>
-        
+        <a class='badge' href='/fifa'>FIFA CDN</a>
         <a class='badge' href='/map'>CDN MAP</a>
         <a class='badge' href='/history'>History</a>
         <a class='badge' href='/management'>Management</a>
@@ -1068,7 +1284,7 @@ def management_page(token: Optional[str] = Cookie(None)):
       </div>
       <div class='navlinks'>
         <a class='badge' href='/'>Home</a>
-        
+        <a class='badge' href='/fifa'>FIFA CDN</a>
         <a class='badge' href='/map'>CDN MAP</a>
         <a class='badge' href='/history'>History</a>
         <a class='badge' href='/management'>Management</a>
@@ -1259,6 +1475,7 @@ def history_page(token: Optional[str] = Cookie(None)):
       </div>
       <div class='navlinks'>
         <a class='badge' href='/'>Home</a>
+        <a class='badge' href='/fifa'>FIFA CDN</a>
         <a class='badge' href='/map'>CDN MAP</a>
         <a class='badge' href='/history'>History</a>
         <a class='badge' href='/management'>Management</a>
